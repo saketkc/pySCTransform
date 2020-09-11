@@ -137,15 +137,15 @@ def get_regularized_params(
     umi,
 ):
     model_parameters = model_parameters.copy()
-    model_parameters['theta'] = np.log10(model_parameters['theta'])
+    # model_parameters['theta'] = np.log10(model_parameters['theta'])
 
     model_parameters_fit = pd.DataFrame(
         np.nan, index=genes_log10_gmean.index, columns=model_parameters.columns
     )
-    exog_predict = genes_log10_gmean
+    exog_predict = genes_log10_gmean.values
     for column in model_parameters.columns:
-        endog = model_parameters.loc[genes_log10_gmean_step1.index, column]
-        exog_fit = genes_log10_gmean_step1
+        endog = model_parameters.loc[genes_log10_gmean_step1.index, column].values
+        exog_fit = genes_log10_gmean_step1.values
 
         reg = KernelReg(endog=endog, exog=exog_fit, var_type="c")
         model_parameters_fit[column] = reg.fit(exog_predict)[0]
@@ -153,7 +153,7 @@ def get_regularized_params(
         #    endog=model_parameters[column], exog=genes_log10_gmean_step1.values, var_type="c"
         # ).fit(genes_log10_gmean_step1.values)[0]
 
-    model_parameters_fit["theta"] = 10 ** model_parameters_fit["theta"]
+    # model_parameters_fit["theta"] = 10 ** model_parameters_fit["theta"]
     return model_parameters_fit
 
 
@@ -221,7 +221,7 @@ def vst(
     # Remove high disp genes
     # Not optimal
     # TODO: Fix
-    genes_log10_gmean_step1 = genes_log10_gmean[model_parameters.theta<10]
+    genes_log10_gmean_step1 = genes_log10_gmean[model_parameters.theta < 10]
     model_parameters_fit = get_regularized_params(
         model_parameters,
         genes_log10_gmean_step1,
@@ -237,6 +237,7 @@ def vst(
         "residuals": residuals,
         "model_parameters": model_parameters,
         "model_parameters_fit": model_parameters_fit,
-        "gene_log10_gmean_step1": genes_log10_gmean_step1,
-        "gene_log10_gmean": genes_log10_gmean,
+        "genes_log10_gmean_step1": genes_log10_gmean_step1,
+        "genes_log10_gmean": genes_log10_gmean,
+        "cell_attr": cell_attr,
     }
