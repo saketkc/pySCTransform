@@ -84,7 +84,7 @@ def get_model_params_pergene(gene_umi, model_matrix):  # latent_var, cell_attr):
     ## theta = 1/fit.params[-1]
     params = (
         dm.NegativeBinomial(gene_umi, model_matrix)
-        .fit(maxiter=300, tol=1e-4, disp=0)
+        .fit(maxiter=500, tol=1e-3, disp=0)
         .params
     )
     theta = 1 / params[-1]
@@ -135,17 +135,20 @@ def get_regularized_params(
     genes_log10_gmean,
     cell_attr,
     umi,
-    gmean_eps,
 ):
+    model_parameters = model_parameters.copy()
+    model_parameters['theta'] = np.log10(model_parameters['theta'])
+
     model_parameters_fit = pd.DataFrame(
         np.nan, index=genes_log10_gmean.index, columns=model_parameters.columns
     )
-    exog = genes_log10_gmean_step1
+    exog_predict = genes_log10_gmean
     for column in model_parameters.columns:
-        endog = model_parameters[col]
+        endog = model_parameters.loc[genes_log10_gmean_step1.index, column]
+        exog_fit = genes_log10_gmean_step1
 
-        reg = KernelReg(endog=endog, exog=exog, var_type="c")
-        model_parameters_fit[column] = reg.fit(exog)[0]
+        reg = KernelReg(endog=endog, exog=exog_fit, var_type="c")
+        model_parameters_fit[column] = reg.fit(exog_predict)[0]
         # KernelReg(
         #    endog=model_parameters[column], exog=genes_log10_gmean_step1.values, var_type="c"
         # ).fit(genes_log10_gmean_step1.values)[0]
@@ -207,7 +210,6 @@ def vst(
 
     # Step 1: Estimate theta
 
-    genes_log10_gmean_step1 = genes_log10_gmean
     data_step1 = cell_attr  # .loc[cells_step1]
     model_matrix = dmatrix(" + ".join(latent_var), cell_attr)
     model_parameters = get_model_params_allgene(
@@ -215,13 +217,17 @@ def vst(
     )  # latent_var, cell_attr)
     ## return model_params
     # Step 2: Do regularization
+
+    # Remove high disp genes
+    # Not optimal
+    # TODO: Fix
+    genes_log10_gmean_step1 = genes_log10_gmean[model_parameters.theta<10]
     model_parameters_fit = get_regularized_params(
         model_parameters,
         genes_log10_gmean_step1,
         genes_log10_gmean,
         cell_attr,
         umi,
-        gmean_eps,
     )
 
     # Step 3: Calculate residuals
