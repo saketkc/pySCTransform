@@ -20,29 +20,35 @@ from statsmodels.tools.sm_exceptions import ConvergenceWarning
 
 # TODO support this
 @tf.function(autograph=False)
-def tfp_fit(model_matrix, response):
+def tfp_fit(response, model_matrix):
     return tfp.glm.fit(
-        model_matrix=model_matrix, response=response, model=tfp.glm.NegativeBinomial()
+        model_matrix=model_matrix,
+        response=response,
+        model=tfp.glm.NegativeBinomial(),
+        maximum_iterations=100,
     )
 
 
-def do_tfp_fit(model_matrix, response):
+def do_tfp_fit(response, model_matrix, design_info_cols):
     [model_coefficients, linear_response, is_converged, num_iter] = [
         t.numpy()
         for t in tfp_fit(
+            response,
             model_matrix,
-            response.reshape(
-                response.shape[0],
-            ),
         )
     ]
+    # response.reshape(
+    # response.shape[0],
+    #        ),
     theta = linear_response.mean() ** 2 / (
         linear_response.var() - linear_response.mean()
     )
     if theta < 0:
         theta = -theta
     theta = 1 / theta
-    return model_coefficients
+    params = dict(zip(design_info_cols, model_coefficients))
+    params["theta"] = theta
+    return params
 
 
 import warnings
@@ -57,42 +63,12 @@ def row_gmean(umi, gmean_eps):
 
 
 def get_model_params_pergene(gene_umi, model_matrix):  # latent_var, cell_attr):
-    # print(gene_umi.shape)
-    # print(cell_attr.shape)
-    """
-    alpha_values = np.linspace(1, 10, 100)
-    loglike = []
-    for alpha in alpha_values:
-        model = sm.GLM(gene_umi, model_matrix, family=sm.families.NegativeBinomial(alpha=alpha))
-        result = model.fit()#scale='x2')
-        loglike.append(result.llf)
-        #overdispersion = fit.pearson_chi2 / fit.df_resid
-    """
-    # loglike = np.asarray(loglike)#-1plcache_start_auto_complete)
-    # disp = alpha_values[loglike.argmax()]
-    ## model = sm.GLM(gene_umi, model_matrix, family=sm.families.NegativeBinomial())
-    ## fit = model.fit(scale='x2')
-    ## alt_theta = fit.scale
-    ## params["scale"] = disp
-    ## params["alt_theta"] = alt_theta
-    ## overdispersion = fit.pearson_chi2 / fit.df_resid
-    ## theta = fit.mu[0]/(overdispersion -1)
-
-    ## pois_fit = sm.GLM(gene_umi, model_matrix, family=sm.families.Poisson()).fit()
-    ## fit = NBin(gene_umi, model_matrix, 'nb2', start_params=list(pois_fit.params) + [1.],
-    ##           disp=0, warn_convergence=0, method="lbfgs").fit()
-    ## theta = 1/fit.params[-1]
     params = (
         dm.NegativeBinomial(gene_umi, model_matrix)
         .fit(maxiter=500, tol=1e-3, disp=0)
         .params
     )
     theta = 1 / params[-1]
-    # model = sm.GLM(gene_umi, model_matrix, family=sm.families.Poisson())
-    # fit = model.fit()
-    # print(fit.summary())
-    # print(model_matrix.design_info.column_names)
-    ## params = dict(zip(model_matrix.design_info.column_names, fit.params))
     params = dict(zip(model_matrix.design_info.column_names, params[:-1]))
     if theta < 0:
         theta = 1e-3
@@ -100,29 +76,39 @@ def get_model_params_pergene(gene_umi, model_matrix):  # latent_var, cell_attr):
     return params
 
 
-def get_model_params_allgene(umi, model_matrix, threads=12):
+def get_model_params_allgene(umi, model_matrix, threads=12, use_tf=False):
 
     results = []
-    feed_list = [
-        (row.values.reshape((-1, 1)), model_matrix) for index, row in umi.iterrows()
-    ]
     with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
-        results = list(
-            tqdm(
-                executor.map(lambda p: get_model_params_pergene(*p), feed_list),
-                total=len(feed_list),
+        if use_tf:
+            feed_list = [
+                (
+                    #tf.convert_to_tensor(row.values),
+                    #tf.convert_to_tensor(model_matrix),
+                    row.values,
+                    model_matrix,
+                    model_matrix.design_info.column_names,
+                )
+                for index, row in umi.iterrows()
+            ]
+            results = list(
+                tqdm(
+                    executor.map(lambda p: do_tfp_fit(*p), feed_list),
+                    total=len(feed_list),
+                )
             )
-        )
-    """
-    for gene, row in tqdm(umi.iterrows()):
 
-        gene_umi = row.values.reshape((-1, 1))
-        params = get_model_params_pergene(gene_umi,
-                                                latent_var,
-                                                cell_attr)
-
-        results.append(params+{"gene": gene})
-    """
+        else:
+            feed_list = [
+                (row.values.reshape((-1, 1)), model_matrix)
+                for index, row in umi.iterrows()
+            ]
+            results = list(
+                tqdm(
+                    executor.map(lambda p: get_model_params_pergene(*p), feed_list),
+                    total=len(feed_list),
+                )
+            )
     params_df = pd.DataFrame(results, index=umi.index)
     params_df.index.name = "gene"
 
@@ -137,7 +123,6 @@ def get_regularized_params(
     umi,
 ):
     model_parameters = model_parameters.copy()
-    # model_parameters['theta'] = np.log10(model_parameters['theta'])
 
     model_parameters_fit = pd.DataFrame(
         np.nan, index=genes_log10_gmean.index, columns=model_parameters.columns
@@ -149,11 +134,6 @@ def get_regularized_params(
 
         reg = KernelReg(endog=endog, exog=exog_fit, var_type="c")
         model_parameters_fit[column] = reg.fit(exog_predict)[0]
-        # KernelReg(
-        #    endog=model_parameters[column], exog=genes_log10_gmean_step1.values, var_type="c"
-        # ).fit(genes_log10_gmean_step1.values)[0]
-
-    # model_parameters_fit["theta"] = 10 ** model_parameters_fit["theta"]
     return model_parameters_fit
 
 
@@ -177,6 +157,8 @@ def vst(
     gmean_eps=1e-6,
     min_cells=5,
     n_genes=2000,
+    threads=12,
+    use_tf=False,
 ):
     """
 
@@ -213,7 +195,7 @@ def vst(
     data_step1 = cell_attr  # .loc[cells_step1]
     model_matrix = dmatrix(" + ".join(latent_var), cell_attr)
     model_parameters = get_model_params_allgene(
-        umi, model_matrix
+        umi, model_matrix, threads, use_tf
     )  # latent_var, cell_attr)
     ## return model_params
     # Step 2: Do regularization
