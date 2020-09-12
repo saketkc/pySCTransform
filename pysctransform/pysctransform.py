@@ -83,8 +83,8 @@ def get_model_params_allgene(umi, model_matrix, threads=12, use_tf=False):
         if use_tf:
             feed_list = [
                 (
-                    #tf.convert_to_tensor(row.values),
-                    #tf.convert_to_tensor(model_matrix),
+                    tf.convert_to_tensor(row.values),
+                    tf.convert_to_tensor(model_matrix),
                     row.values,
                     model_matrix,
                     model_matrix.design_info.column_names,
