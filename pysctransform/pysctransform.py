@@ -85,8 +85,8 @@ def get_model_params_allgene(umi, model_matrix, threads=12, use_tf=False):
                 (
                     tf.convert_to_tensor(row.values),
                     tf.convert_to_tensor(model_matrix),
-                    row.values,
-                    model_matrix,
+                    # row.values,
+                    # model_matrix,
                     model_matrix.design_info.column_names,
                 )
                 for index, row in umi.iterrows()
@@ -222,4 +222,30 @@ def vst(
         "genes_log10_gmean_step1": genes_log10_gmean_step1,
         "genes_log10_gmean": genes_log10_gmean,
         "cell_attr": cell_attr,
+        "model_matrix": model_matrix,
     }
+
+
+def correct(pearson_residuals, cell_attr, latent_var, model_parameters_fit, umi):
+    # replace value of latent variables with its median
+    cell_attr = cell_attr.copy()
+    for column in latent_var:
+        cell_attr.loc[:, column] = cell_attr.loc[:, column].median()
+    model_matrix = dmatrix(" + ".join(latent_var), cell_attr)
+    non_theta_columns = [
+        x for x in model_matrix.design_info.column_names if x != "theta"
+    ]
+    coefficients = model_parameters_fit[non_theta_columns]
+    theta = model_parameters_fit["theta"]
+
+    mu = np.exp(coefficients.dot(model_matrix.T))
+    mu.columns = umi.columns
+
+    variance = mu + (mu ** 2).divide(theta, axis=0)
+    corrected_data = mu + pearson_residuals * np.sqrt(variance)
+    corrected_data[corrected_data < 0] = 0
+    corrected_data = corrected_data.astype(int)
+    corrected_counts = pd.DataFrame(
+        corrected_data, index=pearson_residuals.index, columns=umi.columns
+    )
+    return corrected_counts
