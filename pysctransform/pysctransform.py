@@ -154,7 +154,7 @@ def vst(
     umi,
     n_cells=5000,
     latent_var=["log10_umi"],
-    gmean_eps=1e-6,
+    gmean_eps=1,
     min_cells=5,
     n_genes=2000,
     threads=12,
@@ -177,6 +177,8 @@ def vst(
     log10_expressed_genes = np.log10(expressed_genes)
 
     cell_attr = pd.DataFrame(index=umi.columns)
+    cell_attr["umi"] = umi.sum(0)
+    cell_attr["n_expressed_genes"] = expressed_genes
     cell_attr["log10_umi"] = log10_umi
     # this is referrred to as gene in SCTransform
     cell_attr["log10_gene"] = log10_expressed_genes
