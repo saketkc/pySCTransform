@@ -5,3 +5,5 @@ matplotlib
 statsmodels
 pandas
 patsy
+KDEpy
+adjustText
