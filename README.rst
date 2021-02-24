@@ -4,9 +4,8 @@ pySCTranscform
 
 SCTransform for Python.
 
- * Currently, slower than SCTransform
- * Works on dense input only
- * Only the core part of SCTransform works (for e.g. no batch correction)
+ * Currently around 10x slower than SCTransform
+ * Support for `batch_var` missing
 
  See `demo <notebooks/demo.ipynb>`_.
 
