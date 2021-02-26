@@ -43,10 +43,11 @@ def theta_nb_score(y, mu, theta, fast=True):
         # create a lookup table for y
         # Inspired from glmGamPoi, Ahlmann-Eltze and Huber (2020)
         y_lookup = lookup_table(y)
+        y_sum = np.dot(y_lookup[:, 0], y_lookup[:,1])
         digamma_sum = np.dot(digamma(y_lookup[:, 0] + theta), y_lookup[:, 1])
         digamma_theta = digamma(theta) * N
         mu_term = (np.log(theta) - np.log(mu + theta) + 1) * N
-        y_term = sum((y + theta) / (mu + theta))
+        y_term = 1/(mu+theta) * (y_sum + N*theta)#  #sum((y + theta) / (mu + theta))
 
         lld = digamma_sum - digamma_theta - y_term + mu_term
         return lld
@@ -57,7 +58,7 @@ def theta_nb_score(y, mu, theta, fast=True):
         y_term = (y + theta) / (mu + theta)
 
         lld = digamma_sum - digamma_theta - y_term + mu_term
-        return lld.sum()
+        return np.sum(lld)
 
 
 def theta_nb_hessian(y, mu, theta, fast=True):
@@ -67,10 +68,12 @@ def theta_nb_hessian(y, mu, theta, fast=True):
         # create a lookup table for y
         # Inspired from glmGamPoi, Ahlmann-Eltze and Huber (2020)
         y_lookup = lookup_table(y)
+        y_sum = np.dot(y_lookup[:, 0], y_lookup[:,1])
         trigamma_sum = np.dot(trigamma(y_lookup[:, 0] + theta), y_lookup[:, 1])
         trigamma_theta = trigamma(theta) * N
         mu_term = (1 / theta - 2 / (mu + theta)) * N
-        y_term = ((y + theta) / (mu + theta) ** 2).sum()
+        y_term = (y_sum + N*theta) / (mu + theta) ** 2
+        # y_term = ((y + theta) / (mu + theta) ** 2).sum()
         lldd = trigamma_sum - trigamma_theta + y_term + mu_term
         return lldd
     else:
@@ -80,7 +83,7 @@ def theta_nb_hessian(y, mu, theta, fast=True):
         mu_term = 1 / theta - 2 / (mu + theta)
         y_term = (y + theta) / (mu + theta) ** 2
         lldd = trigamma_sum - trigamma_theta + y_term + mu_term
-        return lldd.sum()
+        return np.sum(lldd)
 
 
 def estimate_mu_glm(y, model_matrix):
