@@ -133,7 +133,7 @@ def compare_with_sct(vst_out, sct_modelparsfit_file, sct_geneattr_file):
         np.log10(model_parsfit_merged["sct_theta"]),
         np.log10(model_parsfit_merged["theta"]),
         s=1,
-        color="black"
+        color="black",
     )
     ax.axline([0, 0], [1, 1], linestyle="dashed", color="red")
     ax.set_xlabel("SCT theta (regularized)")
@@ -144,7 +144,7 @@ def compare_with_sct(vst_out, sct_modelparsfit_file, sct_geneattr_file):
         np.log10(gene_attr_merged["sct_residual_mean"]),
         np.log10(gene_attr_merged["residual_mean"]),
         s=1,
-        color="black"
+        color="black",
     )
     ax.axline([0, 0], [1, 1], linestyle="dashed", color="red")
     ax.set_xlabel("SCT residual mean")
@@ -155,7 +155,7 @@ def compare_with_sct(vst_out, sct_modelparsfit_file, sct_geneattr_file):
         np.log10(gene_attr_merged["sct_residual_variance"]),
         np.log10(gene_attr_merged["residual_variance"]),
         s=1,
-        color="black"
+        color="black",
     )
     ax.axline([0, 0], [1, 1], linestyle="dashed", color="red")
     ax.set_xlabel("SCT residual variance")

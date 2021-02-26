@@ -24,6 +24,7 @@ from scipy import stats
 
 logging.captureWarnings(True)
 
+from .fit import alpha_lbfgs
 from .fit import theta_ml
 from .fit import estimate_mu_glm
 from .fit import estimate_mu_poisson
@@ -154,12 +155,12 @@ def get_model_params_pergene(
         params = dict(zip(model_matrix.design_info.column_names, coef))
         theta = theta_ml(y=gene_umi, mu=mu)
         params["theta"] = theta
-    elif fit_type == "theta_ml2":
+    elif fit_type == "alpha_lbfgs":
         params = estimate_mu_poisson(gene_umi, model_matrix)
         coef = params["coef"]
         mu = params["mu"]
         params = dict(zip(model_matrix.design_info.column_names, coef))
-        theta = theta_ml2(y=gene_umi, mu=mu)
+        theta = alpha_lbfgs(y=gene_umi, mu=mu)
         params["theta"] = theta
     elif fit_type == "tf":
         # pass
