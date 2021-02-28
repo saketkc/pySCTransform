@@ -11,7 +11,7 @@ import concurrent.futures
 import logging
 
 from scipy.sparse import csr_matrix
-import numpy as np
+import numpy as npy
 import pandas as pd
 import statsmodels.api as sm
 import statsmodels.discrete.discrete_model as dm
@@ -25,10 +25,14 @@ from scipy import stats
 logging.captureWarnings(True)
 
 from .fit import alpha_lbfgs
+from .fit import theta_lbfgs
 from .fit import theta_ml
 from .fit import estimate_mu_glm
 from .fit import estimate_mu_poisson
-
+#import jax.numpy as jnpy
+#from .fit import jax_alpha_lbfgs
+#from .jax_theta_ml import jax_theta_ml
+#from .jax_lbfgs import fit_nbinom_lbfgs_autograd
 
 def is_outlier_naive(x, snr_threshold=25):
     """
@@ -36,10 +40,10 @@ def is_outlier_naive(x, snr_threshold=25):
     """
     if len(x.shape) == 1:
         x = x[:, None]
-    median = np.median(x, axis=0)
-    diff = np.sum((x - median) ** 2, axis=-1)
-    diff = np.sqrt(diff)
-    med_abs_deviation = np.median(diff)
+    median = npy.median(x, axis=0)
+    diff = npy.sum((x - median) ** 2, axis=-1)
+    diff = npy.sqrt(diff)
+    med_abs_deviation = npy.median(diff)
 
     modified_z_score = 0.6745 * diff / med_abs_deviation
 
@@ -49,20 +53,20 @@ def is_outlier_naive(x, snr_threshold=25):
 def sparse_var(X, axis=None):
     X2 = X.copy()
     X2.data **= 2
-    return X2.mean(axis) - np.square(X2.mean(axis))
+    return X2.mean(axis) - npy.square(X2.mean(axis))
 
 
 def bwSJ(genes_log10_gmean_step1, bw_adjust=3):
     # See https://kdepy.readthedocs.io/en/latest/bandwidth.html
-    fit = FFTKDE(kernel="gaussian", bw="ISJ").fit(genes_log10_gmean_step1)
+    fit = FFTKDE(kernel="gaussian", bw="ISJ").fit(npy.asarray(genes_log10_gmean_step1))
     _ = fit.evaluate()
     bw = fit.bw * bw_adjust
-    return np.array([bw], dtype=float)
+    return npy.array([bw], dtype=float)
 
 
 def robust_scale(x):
-    return (x - np.median(x)) / (
-        stats.median_absolute_deviation(x) + np.finfo(float).eps
+    return (x - npy.median(x)) / (
+        stats.median_absolute_deviation(x) + npy.finfo(float).eps
     )
 
 
@@ -70,9 +74,9 @@ def robust_scale_binned(y, x, breaks):
     # bins = pd.cut(x=x, bins=breaks, ordered=True)
 
     # categories = bins.categories
-    bins = np.digitize(x=x, bins=breaks)
-    categories = np.unique(bins)
-    score = np.zeros(len(bins))
+    bins = npy.digitize(x=x, bins=breaks)
+    categories = npy.unique(bins)
+    score = npy.zeros(len(bins))
     for cat in categories:
         score_o = bins[bins == cat]
         score[bins == cat] = robust_scale(score_o)
@@ -80,59 +84,59 @@ def robust_scale_binned(y, x, breaks):
 
 
 def is_outlier(y, x, th=10):
-    bin_width = (np.nanmax(x) - np.nanmin(x)) * bwSJ(x, bw_adjust=1 / 2)
-    eps = np.finfo(float).eps * 10
+    bin_width = (npy.nanmax(x) - npy.nanmin(x)) * bwSJ(x, bw_adjust=1 / 2)
+    eps = npy.finfo(float).eps * 10
     bin_width = bin_width[0]
-    breaks1 = np.arange(
-        start=np.nanmin(x) - eps, stop=np.nanmax(x) + bin_width, step=bin_width
+    breaks1 = npy.arange(
+        start=npy.nanmin(x) - eps, stop=npy.nanmax(x) + bin_width, step=bin_width
     )
-    breaks2 = np.arange(
-        start=np.nanmin(x) - eps - bin_width / 2,
-        stop=np.nanmax(x) + bin_width,
+    breaks2 = npy.arange(
+        start=npy.nanmin(x) - eps - bin_width / 2,
+        stop=npy.nanmax(x) + bin_width,
         step=bin_width,
     )
     score1 = robust_scale_binned(y, x, breaks1)
     score2 = robust_scale_binned(y, x, breaks2)
-    return np.vstack((np.abs(score1), np.abs(score2))).min(0) > th
+    return npy.vstack((npy.abs(score1), npy.abs(score2))).min(0) > th
 
 
 def make_cell_attr(umi, cell_names):
     assert umi.shape[1] == len(cell_names)
-    total_umi = np.squeeze(np.asarray(umi.sum(0)))
-    log10_umi = np.log10(total_umi)
-    expressed_genes = np.squeeze(np.asarray((umi > 0).sum(0)))
-    log10_expressed_genes = np.log10(expressed_genes)
+    total_umi = npy.squeeze(npy.asarray(umi.sum(0)))
+    log10_umi = npy.log10(total_umi)
+    expressed_genes = npy.squeeze(npy.asarray((umi > 0).sum(0)))
+    log10_expressed_genes = npy.log10(expressed_genes)
     cell_attr = pd.DataFrame({"umi": total_umi, "log10_umi": log10_umi})
     cell_attr.index = cell_names
     cell_attr["n_expressed_genes"] = expressed_genes
     # this is referrred to as gene in SCTransform
     cell_attr["log10_gene"] = log10_expressed_genes
     cell_attr["umi_per_gene"] = log10_umi / expressed_genes
-    cell_attr["log10_umi_per_gene"] = np.log10(cell_attr["umi_per_gene"])
+    cell_attr["log10_umi_per_gene"] = npy.log10(cell_attr["umi_per_gene"])
     return cell_attr
 
 
 def row_gmean(umi, gmean_eps=1):
-    gmean = np.exp(np.log(umi + gmean_eps).mean(1)) - gmean_eps
+    gmean = npy.exp(npy.log(umi + gmean_eps).mean(1)) - gmean_eps
     return gmean
 
 
 def row_gmean_sparse(umi, gmean_eps=1):
 
     # print(umi.shape)
-    # gmean = np.apply_along_axis(func1d=row_gmean, axis=1, arr=umi, gmean_eps=gmean_eps)
-    # gmean = np.exp(np.log(umi + gmean_eps).mean(1)) - gmean_eps
+    # gmean = npy.apply_along_axis(func1d=row_gmean, axis=1, arr=umi, gmean_eps=gmean_eps)
+    # gmean = npy.exp(npy.log(umi + gmean_eps).mean(1)) - gmean_eps
     # for row in umi:
-    gmean = np.asarray([row_gmean(x.todense(), gmean_eps)[0] for x in umi])
-    gmean = np.squeeze(gmean)
+    gmean = npy.asarray(npy.array([row_gmean(x.todense(), gmean_eps)[0] for x in umi]))
+    gmean = npy.squeeze(gmean)
     return gmean
 
 
 def _process_y(y):
-    if not isinstance(y, np.ndarray):
-        y = np.array(y)
-    y = np.asarray(y, dtype=int)
-    y = np.squeeze(y)
+    if not isinstance(y, npy.ndarray):
+        y = npy.array(y)
+    y = npy.asarray(y, dtype=int)
+    y = npy.squeeze(y)
     return y
 
 
@@ -145,7 +149,7 @@ def get_model_params_pergene(
         params = model.fit(maxiter=50, tol=1e-3, disp=0).params
         theta = 1 / params[-1]
         if theta >= 1e5:
-            theta = np.inf
+            theta = npy.inf
         params = dict(zip(model_matrix.design_info.column_names, params[:-1]))
         params["theta"] = theta
     elif fit_type == "theta_ml":
@@ -155,12 +159,40 @@ def get_model_params_pergene(
         params = dict(zip(model_matrix.design_info.column_names, coef))
         theta = theta_ml(y=gene_umi, mu=mu)
         params["theta"] = theta
+    elif fit_type == "jax_theta_ml":
+        params = estimate_mu_poisson(gene_umi, model_matrix)
+        coef = params["coef"]
+        mu = params["mu"]
+        params = dict(zip(model_matrix.design_info.column_names, coef))
+        theta = jax_theta_ml(y=gene_umi, mu=mu)
+        params["theta"] = theta
     elif fit_type == "alpha_lbfgs":
         params = estimate_mu_poisson(gene_umi, model_matrix)
         coef = params["coef"]
         mu = params["mu"]
         params = dict(zip(model_matrix.design_info.column_names, coef))
         theta = alpha_lbfgs(y=gene_umi, mu=mu)
+        params["theta"] = theta
+    elif fit_type == "jax_alpha_lbfgs":
+        params = estimate_mu_poisson(gene_umi, model_matrix)
+        coef = params["coef"]
+        mu = params["mu"]
+        params = dict(zip(model_matrix.design_info.column_names, coef))
+        theta = jax_alpha_lbfgs(y=gene_umi, mu=mu)
+        params["theta"] = theta
+    elif fit_type == "theta_lbfgs":
+        params = estimate_mu_poisson(gene_umi, model_matrix)
+        coef = params["coef"]
+        mu = params["mu"]
+        params = dict(zip(model_matrix.design_info.column_names, coef))
+        theta = theta_lbfgs(y=gene_umi, mu=mu)
+        params["theta"] = theta
+    elif fit_type == "autograd":
+        params = estimate_mu_poisson(gene_umi, model_matrix)
+        coef = params["coef"]
+        mu = params["mu"]
+        params = dict(zip(model_matrix.design_info.column_names, coef))
+        theta = fit_nbinom_lbfgs_autograd(y=gene_umi, mu=mu)
         params["theta"] = theta
     elif fit_type == "tf":
         # pass
@@ -215,15 +247,18 @@ def get_model_params_allgene(
 
 def dds(genes_log10_gmean_step1, grid_points=2 ** 10):
     # density dependent downsampling
+    #print(genes_log10_gmean_step1.shape)
+    #if genes_log10_gmean_step1.ndim <2:
+    #    genes_log10_gmean_step1 = genes_log10_gmean_step1[:, npy.newaxis]
     x, y = (
         FFTKDE(kernel="gaussian", bw="silverman")
-        .fit(genes_log10_gmean_step1)
+        .fit(npy.asarray(genes_log10_gmean_step1))
         .evaluate(grid_points=grid_points)
     )
     density = interpolate.interp1d(x=x, y=y, assume_sorted=False)
-    sampling_prob = 1 / (density(genes_log10_gmean_step1) + np.finfo(float).eps)
+    sampling_prob = 1 / (density(genes_log10_gmean_step1) + npy.finfo(float).eps)
 
-    # sampling_prob = 1 / (density + np.finfo(float).eps)
+    # sampling_prob = 1 / (density + npy.finfo(float).eps)
     return sampling_prob / sampling_prob.sum()
 
 
@@ -244,12 +279,12 @@ def get_regularized_params(
 ):
     model_parameters = model_parameters.copy()
     genes_log10_gmean_step1 = genes_log10_gmean_step1[
-        np.isfinite(model_parameters.theta)
+        npy.isfinite(model_parameters.theta)
     ]
-    genes_step1 = genes_step1[np.isfinite(model_parameters.theta)]
+    genes_step1 = genes_step1[npy.isfinite(model_parameters.theta)]
 
     model_parameters_fit = pd.DataFrame(
-        np.nan, index=genes, columns=model_parameters.columns
+        npy.nan, index=genes, columns=model_parameters.columns
     )
 
     """
@@ -267,8 +302,8 @@ def get_regularized_params(
     x_points_df = pd.DataFrame({"gene_log10_gmean": genes_log10_gmean})
     x_points_df["min_gene_log10_gmean_step1"] = genes_log10_gmean_step1.min()
 
-    x_points_df["x_points"] = np.nanmax(x_points_df, axis=1)
-    x_points_df["max_gene_log10_gmean_step1"] = np.nanmax(genes_log10_gmean_step1)
+    x_points_df["x_points"] = npy.nanmax(x_points_df, axis=1)
+    x_points_df["max_gene_log10_gmean_step1"] = npy.nanmax(genes_log10_gmean_step1)
     x_points_df["x_points"] = x_points_df[
         ["x_points", "max_gene_log10_gmean_step1"]
     ].min(1)
@@ -281,39 +316,40 @@ def get_regularized_params(
         bw = bwSJ(genes_log10_gmean_step1, bw_adjust=bw_adjust)  # .values)
         reg = KernelReg(endog=endog, exog=exog_fit, var_type="c", reg_type="ll", bw=bw)
         fit = reg.fit(x_points)
-        model_parameters_fit[column] = np.squeeze(fit[0])
+        model_parameters_fit[column] = npy.squeeze(fit[0])
 
     if theta_regularization == "theta":
-        theta = np.power(10, (model_parameters["od_factor"]))
+        theta = npy.power(10, (model_parameters["od_factor"]))
     else:
-        theta = np.divide(
-            np.power(10, genes_log10_gmean),
-            np.power(10, model_parameters_fit["od_factor"] - 1),
-            axis=0,
+        theta = npy.divide(
+            npy.power(10, genes_log10_gmean),
+            npy.power(10, model_parameters_fit["od_factor"] - 1),
+            #axis=0,
         )
     model_parameters_fit["theta"] = theta
     if fixpoisson:
         # relace theta by inf
         if poisson_genes is not None:
-            model_parameters_fit.loc[poisson_genes, "theta"] = np.inf
+            model_parameters_fit.loc[poisson_genes, "theta"] = npy.inf
 
     return model_parameters_fit
 
 
 def get_residuals(umi, model_matrix, model_parameters_fit, res_clip_range="default"):
 
-    subset = model_parameters_fit[model_matrix.design_info.column_names]
-    theta = model_parameters_fit["theta"]
+    subset = npy.asarray(model_parameters_fit[model_matrix.design_info.column_names].values)
+    theta = npy.asarray(model_parameters_fit["theta"].values)
 
-    mu = np.exp(subset.dot(model_matrix.T))
+    mu = npy.exp(npy.dot(subset, model_matrix.T))
     # mu.columns = umi.columns
 
-    variance = mu + (mu ** 2).divide(theta, axis=0)
+    #variance = mu + (mu ** 2).divide(theta, axis=0)
+    variance = mu + npy.divide(mu ** 2, theta.reshape(-1,1))
 
-    pearson_residuals = (umi - mu.values) / np.sqrt(variance.values)
+    pearson_residuals = npy.divide(umi - mu, npy.sqrt(variance))
     if res_clip_range == "default":
-        res_clip_range = np.sqrt(umi.shape[1])
-        pearson_residuals = np.clip(
+        res_clip_range = npy.sqrt(umi.shape[1])
+        pearson_residuals = npy.clip(
             pearson_residuals, a_min=-res_clip_range, a_max=res_clip_range
         )
     return pearson_residuals
@@ -361,51 +397,39 @@ def vst(
     if cell_names is None:
         cell_names = [x for x in range(umi.shape[1])]
 
-    gene_names = np.asarray(gene_names)
-    cell_names = np.array(cell_names)
+    gene_names = npy.asarray(gene_names, dtype="U")
+    cell_names = npy.asarray(cell_names, dtype="U")
 
     if n_cells is None:
         n_cells = umi.shape[1]
     if n_genes is None:
         n_genes = umi.shape[0]
 
-    genes_cell_count = np.asarray((umi > 0.01).sum(1))
-    min_cells_genes_index = np.squeeze(genes_cell_count >= min_cells)
+    genes_cell_count = npy.asarray((umi > 0.01).sum(1))
+    min_cells_genes_index = npy.squeeze(genes_cell_count >= min_cells)
     genes = gene_names[min_cells_genes_index]
     if isinstance(umi, pd.DataFrame):
         umi = umi.loc[genes]
     else:
         umi = umi[min_cells_genes_index, :]
-    genes_log10_gmean = np.log10(row_gmean_sparse(umi, gmean_eps=gmean_eps))
-
-    # nonzerocells = cell_attr.loc[cell_attr.umi > 0].index
-    # cell_attr = cell_attr.loc[nonzerocells]
-    # umi = umi[nonzerocells]
-    # n_cells = min(n_cells, umi.shape[1])
-    """
-    cells_step1 = np.random.choice(umi.columns.tolist(), size=n_cells, replace=False)
-    genes_cell_count = (umi.loc[:, cells_step1] > 0).sum(1)
-    genes = genes_cell_count >= min_cells
-    umi = umi.loc[genes]
-    genes_log10_gmean = np.log10(row_gmean(umi, gmean_eps))
-    """
+    genes_log10_gmean = npy.log10(row_gmean_sparse(umi, gmean_eps=gmean_eps))
 
     cell_attr = make_cell_attr(umi, cell_names)
 
     if n_cells is None and n_cells < umi.shape[1]:
         # downsample cells to speed up the first step
-        cells_step1_index = np.random.choice(
-            a=np.arange(len(cell_names), dtype=int), size=n_cells, replace=False
+        cells_step1_index = npy.random.choice(
+            a=npy.arange(len(cell_names), dtype=int), size=n_cells, replace=False
         )
         cells_step1 = cell_names[cells_step1_index]
         genes_cell_count_step1 = (umi[:, cells_step1_index] > 0).sum(1)
         genes_step1 = genes[genes_cell_count_step1 >= min_cells]
-        genes_log10_gmean_step1 = np.log10(
+        genes_log10_gmean_step1 = npy.log10(
             row_gmean_sparse(umi[genes_step1, cells_step1], gmean_eps=gmean_eps)
         )
         umi_step1 = umi[:, cells_step1_index]
     else:
-        cells_step1_index = np.arange(len(cell_names), dtype=int)
+        cells_step1_index = npy.arange(len(cell_names), dtype=int)
         cells_step1 = cell_names
         genes_step1 = genes
         genes_log10_gmean_step1 = genes_log10_gmean
@@ -416,12 +440,12 @@ def vst(
         # density-sample genes to speed up the first step
         sampling_prob = dds(genes_log10_gmean_step1)
 
-        genes_step1_index = np.random.choice(
-            a=np.arange(len(genes_step1)), size=n_genes, replace=False, p=sampling_prob
+        genes_step1_index = npy.random.choice(
+            a=npy.arange(len(genes_step1)), size=n_genes, replace=False, p=sampling_prob
         )
         genes_step1 = gene_names[genes_step1_index]
         umi_step1 = umi_step1[genes_step1_index, :]  # [:, cells_step1_index]
-        genes_log10_gmean_step1 = np.log10(
+        genes_log10_gmean_step1 = npy.log10(
             row_gmean_sparse(umi_step1, gmean_eps=gmean_eps)
         )
 
@@ -444,9 +468,9 @@ def vst(
 
     gene_attr = pd.DataFrame(index=genes)
     gene_attr["gene_amean"] = umi.mean(1)
-    gene_attr["gene_gmean"] = np.power(10, genes_log10_gmean)
+    gene_attr["gene_gmean"] = npy.power(10, genes_log10_gmean)
     gene_attr["gene_detectation_rate"] = (
-        np.squeeze(np.asarray((umi > 0).sum(1))) / umi.shape[1]
+        npy.squeeze(npy.asarray((umi > 0).sum(1))) / umi.shape[1]
     )
     gene_attr["theta"] = model_parameters["theta"]
     gene_attr["gene_variance"] = sparse_var(umi, 1)  # umi.var(1)
@@ -459,15 +483,15 @@ def vst(
         print("Found ", len(poisson_genes), " poisson genes")
         print("Setting there estimates to Inf")
 
-        model_parameters.loc[poisson_genes, "theta"] = np.inf
+        model_parameters.loc[poisson_genes, "theta"] = npy.inf
 
     if theta_regularization == "theta":
-        model_parameters["od_factor"] = np.log10(model_parameters["theta"])
+        model_parameters["od_factor"] = npy.log10(model_parameters["theta"])
     else:
-        model_parameters["od_factor"] = np.log10(
+        model_parameters["od_factor"] = npy.log10(
             1
-            + np.divide(
-                np.power(10, genes_log10_gmean_step1), model_parameters["theta"], axis=0
+            + npy.divide(
+                npy.power(10, genes_log10_gmean_step1), model_parameters["theta"], axis=0
             )
         )
     outliers_df = pd.DataFrame(index=genes_step1)
@@ -479,7 +503,7 @@ def vst(
     model_parameters = model_parameters.loc[genes_non_outliers]
 
     end = time.time()
-    print("Step1 done. Took {} seconds.".format(np.ceil(end - start)))
+    print("Step1 done. Took {} seconds.".format(npy.ceil(end - start)))
     # Step 2: Do regularization
 
     # Remove high disp genes
@@ -500,7 +524,7 @@ def vst(
         poisson_genes=poisson_genes,
     )
     end = time.time()
-    print("Step2 done. Took {} seconds.".format(np.ceil(end - start)))
+    print("Step2 done. Took {} seconds.".format(npy.ceil(end - start)))
 
     # Step 3: Calculate residuals
     print("Running Step3")
@@ -509,7 +533,7 @@ def vst(
     residuals.index = genes
     residuals.columns = cell_names
     end = time.time()
-    print("Step3 done. Took {} seconds.".format(np.ceil(end - start)))
+    print("Step3 done. Took {} seconds.".format(npy.ceil(end - start)))
 
     gene_attr["theta_regularized"] = model_parameters["theta"]
     gene_attr["residual_mean"] = residuals.mean(1)
@@ -539,11 +563,11 @@ def correct(pearson_residuals, cell_attr, latent_var, model_parameters_fit, umi)
     coefficients = model_parameters_fit[non_theta_columns]
     theta = model_parameters_fit["theta"]
 
-    mu = np.exp(coefficients.dot(model_matrix.T))
+    mu = npy.exp(coefficients.dot(model_matrix.T))
     mu.columns = umi.columns
 
     variance = mu + (mu ** 2).divide(theta, axis=0)
-    corrected_data = mu + pearson_residuals * np.sqrt(variance)
+    corrected_data = mu + pearson_residuals * npy.sqrt(variance)
     corrected_data[corrected_data < 0] = 0
     corrected_data = corrected_data.astype(int)
     corrected_counts = pd.DataFrame(

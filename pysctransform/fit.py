@@ -1,14 +1,14 @@
 import sys
-import numpy as np
 import numbers
+import numpy as npy
 
 from scipy.special import digamma
 from scipy.special import gammaln
 from scipy.special import polygamma
+from scipy.optimize import minimize
 from statsmodels.api import GLM
 import statsmodels
 import statsmodels.api as sm
-from scipy.optimize import minimize
 
 
 def trigamma(x):
@@ -20,20 +20,17 @@ def trigamma(x):
     """
     return polygamma(1, x)
 
-
 def _process_y(y):
-    if not isinstance(y, np.ndarray):
-        y = np.array(y)
-    y = np.asarray(y, dtype=int)
-    y = np.squeeze(y)
+    y = npy.asarray(y, dtype=int)
+    y = npy.squeeze(y)
     return y
 
 
 def lookup_table(y):
-    y = np.squeeze(y)
-    y_bc = np.bincount(y)
-    y_i = np.nonzero(y_bc)[0]
-    y_lookup = np.vstack((y_i, y_bc[y_i])).T
+    y = npy.squeeze(y)
+    y_bc = npy.bincount(y)
+    y_i = npy.nonzero(y_bc)[0]
+    y_lookup = npy.vstack((y_i, y_bc[y_i])).T
     return y_lookup
 
 
@@ -44,11 +41,12 @@ def theta_nb_score(y, mu, theta, fast=True):
     if fast:
         # create a lookup table for y
         # Inspired from glmGamPoi, Ahlmann-Eltze and Huber (2020)
+        #y_lookup = npy.asarray(lookup_table(y))
         y_lookup = lookup_table(y)
-        y_sum = np.dot(y_lookup[:, 0], y_lookup[:, 1])
-        digamma_sum = np.dot(digamma(y_lookup[:, 0] + theta), y_lookup[:, 1])
+        y_sum = npy.dot(y_lookup[:, 0], y_lookup[:, 1])
+        digamma_sum = npy.dot(digamma(y_lookup[:, 0] + theta), y_lookup[:, 1])
         digamma_theta = digamma(theta) * N
-        mu_term = (np.log(theta) - np.log(mu + theta) + 1) * N
+        mu_term = (npy.log(theta) - npy.log(mu + theta) + 1) * N
         y_term = (
             1 / (mu + theta) * (y_sum + N * theta)
         )  #  #sum((y + theta) / (mu + theta))
@@ -58,11 +56,11 @@ def theta_nb_score(y, mu, theta, fast=True):
     else:
         digamma_sum = digamma(y + theta)
         digamma_theta = digamma(theta)
-        mu_term = np.log(theta) - np.log(mu + theta) + 1
+        mu_term = npy.log(theta) - npy.log(mu + theta) + 1
         y_term = (y + theta) / (mu + theta)
 
         lld = digamma_sum - digamma_theta - y_term + mu_term
-        return np.sum(lld)
+        return npy.sum(lld)
 
 
 def theta_nb_hessian(y, mu, theta, fast=True):
@@ -72,8 +70,9 @@ def theta_nb_hessian(y, mu, theta, fast=True):
         # create a lookup table for y
         # Inspired from glmGamPoi, Ahlmann-Eltze and Huber (2020)
         y_lookup = lookup_table(y)
-        y_sum = np.dot(y_lookup[:, 0], y_lookup[:, 1])
-        trigamma_sum = np.dot(trigamma(y_lookup[:, 0] + theta), y_lookup[:, 1])
+        #y_lookup = npy.asarray(lookup_table(y))
+        y_sum = npy.dot(y_lookup[:, 0], y_lookup[:, 1])
+        trigamma_sum = npy.dot(trigamma(y_lookup[:, 0] + theta), y_lookup[:, 1])
         trigamma_theta = trigamma(theta) * N
         mu_term = (1 / theta - 2 / (mu + theta)) * N
         y_term = (y_sum + N * theta) / (mu + theta) ** 2
@@ -87,11 +86,12 @@ def theta_nb_hessian(y, mu, theta, fast=True):
         mu_term = 1 / theta - 2 / (mu + theta)
         y_term = (y + theta) / (mu + theta) ** 2
         lldd = trigamma_sum - trigamma_theta + y_term + mu_term
-        return np.sum(lldd)
+        return npy.sum(lldd)
 
 
 def estimate_mu_glm(y, model_matrix):
     y = _process_y(y)
+    y = npy.asarray(y)
     model = sm.GLM(y, model_matrix, family=sm.families.Poisson())
     fit = model.fit()
     mu = fit.predict()
@@ -100,6 +100,7 @@ def estimate_mu_glm(y, model_matrix):
 
 def estimate_mu_poisson(y, model_matrix):
     y = _process_y(y)
+    y = npy.asarray(y)
     model = statsmodels.discrete.discrete_model.Poisson(y, model_matrix)
     fit = model.fit(disp=False)
     mu = fit.predict()
@@ -108,7 +109,7 @@ def estimate_mu_poisson(y, model_matrix):
 
 def theta_ml(y, mu, max_iters=20, tol=1e-4):
     y = _process_y(y)
-    mu = np.squeeze(mu)
+    mu = npy.squeeze(mu)
 
     N = len(y)
     theta = N / sum((y / mu - 1) ** 2)
@@ -118,40 +119,62 @@ def theta_ml(y, mu, max_iters=20, tol=1e-4):
         score_diff = theta_nb_score(y, mu, theta)
         # if first diff is negative, there is no maximum
         if score_diff < 0:
-            return np.inf
+            return npy.inf
         delta_theta = score_diff / theta_nb_hessian(y, mu, theta)
         theta = theta - delta_theta
 
-        if np.abs(delta_theta) <= tol:
+        if npy.abs(delta_theta) <= tol:
             return theta
 
     if theta < 0:
-        theta = np.inf
+        theta = npy.inf
 
     return theta
 
 
 def alpha_lbfgs(y, mu, maxoverdispersion=1e5):
     y = _process_y(y)
-    mu = np.squeeze(mu)
+    mu = npy.squeeze(mu)
     N = len(y)
-    ysum = np.sum(y)
+    ysum = npy.sum(y)
 
     def nll(alpha):
         return (
-            -np.sum(gammaln(1 / alpha + y))
+            -npy.sum(gammaln(1 / alpha + y))
             + N * gammaln(1 / alpha)
-            - ysum * np.log(mu / (1 / alpha + mu))
-            - N * 1 / alpha * np.log(1 / alpha / (1 / alpha + mu))
+            - ysum * npy.log(mu / (1 / alpha + mu))
+            - N * 1 / alpha * npy.log(1 / alpha / (1 / alpha + mu))
         )
 
-    init_alpha = (np.var(y) - mu) / (mu ** 2)
+    init_alpha = (npy.var(y) - mu) / (mu ** 2)
     if init_alpha <= 0:
-        return np.inf
+        return npy.inf
     alpha = minimize(
         nll, init_alpha, bounds=[(0, maxoverdispersion)], method="L-BFGS-B"
     )
     return 1 / alpha.x[0]
+
+def theta_lbfgs(y, mu, maxoverdispersion=1e5):
+    y = _process_y(y)
+    mu = npy.squeeze(mu)
+    N = len(y)
+    ysum = npy.sum(y)
+
+    def nll(theta):
+        return (
+            -npy.sum(gammaln(theta + y))
+            + N * gammaln(theta)
+            - ysum * npy.log(mu / (theta + mu))
+            - N * theta * npy.log(theta / (theta + mu))
+        )
+
+    init_theta = (mu ** 2) / (npy.var(y) - mu)
+    if init_theta <= 0:
+        return npy.inf
+    theta = minimize(
+        nll, init_theta, bounds=[(1 / maxoverdispersion, None)], method="L-BFGS-B"
+    )
+    return theta.x[0]
 
 
 def fit_tensorflow(response, model_matrix):

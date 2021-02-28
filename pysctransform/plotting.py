@@ -9,8 +9,10 @@ def is_outlier(x, snr_threshold=25):
     """
     Mark points as outliers
     """
+    if isinstance(x, pd.Series):
+        x = x.values
     if len(x.shape) == 1:
-        x = x[:, None]
+        x = x.reshape(-1,1)
     median = np.median(x, axis=0)
     diff = np.sum((x - median) ** 2, axis=-1)
     diff = np.sqrt(diff)
