@@ -20,6 +20,7 @@ def trigamma(x):
     """
     return polygamma(1, x)
 
+
 def _process_y(y):
     y = npy.asarray(y, dtype=int)
     y = npy.squeeze(y)
@@ -41,7 +42,7 @@ def theta_nb_score(y, mu, theta, fast=True):
     if fast:
         # create a lookup table for y
         # Inspired from glmGamPoi, Ahlmann-Eltze and Huber (2020)
-        #y_lookup = npy.asarray(lookup_table(y))
+        # y_lookup = npy.asarray(lookup_table(y))
         y_lookup = lookup_table(y)
         y_sum = npy.dot(y_lookup[:, 0], y_lookup[:, 1])
         digamma_sum = npy.dot(digamma(y_lookup[:, 0] + theta), y_lookup[:, 1])
@@ -70,7 +71,7 @@ def theta_nb_hessian(y, mu, theta, fast=True):
         # create a lookup table for y
         # Inspired from glmGamPoi, Ahlmann-Eltze and Huber (2020)
         y_lookup = lookup_table(y)
-        #y_lookup = npy.asarray(lookup_table(y))
+        # y_lookup = npy.asarray(lookup_table(y))
         y_sum = npy.dot(y_lookup[:, 0], y_lookup[:, 1])
         trigamma_sum = npy.dot(trigamma(y_lookup[:, 0] + theta), y_lookup[:, 1])
         trigamma_theta = trigamma(theta) * N
@@ -153,6 +154,7 @@ def alpha_lbfgs(y, mu, maxoverdispersion=1e5):
         nll, init_alpha, bounds=[(0, maxoverdispersion)], method="L-BFGS-B"
     )
     return 1 / alpha.x[0]
+
 
 def theta_lbfgs(y, mu, maxoverdispersion=1e5):
     y = _process_y(y)

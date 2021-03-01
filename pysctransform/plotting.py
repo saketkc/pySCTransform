@@ -3,6 +3,9 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from adjustText import adjust_text
+from scipy.stats.stats import pearsonr
+
+
 
 
 def is_outlier(x, snr_threshold=25):
@@ -12,7 +15,7 @@ def is_outlier(x, snr_threshold=25):
     if isinstance(x, pd.Series):
         x = x.values
     if len(x.shape) == 1:
-        x = x.reshape(-1,1)
+        x = x.reshape(-1, 1)
     median = np.median(x, axis=0)
     diff = np.sum((x - median) ** 2, axis=-1)
     diff = np.sqrt(diff)
@@ -159,7 +162,12 @@ def compare_with_sct(vst_out, sct_modelparsfit_file, sct_geneattr_file):
         s=1,
         color="black",
     )
-    ax.axline([0, 0], [1, 1], linestyle="dashed", color="red")
+    cor = pearsonr(
+        np.log10(gene_attr_merged["sct_residual_variance"]),
+        np.log10(gene_attr_merged["residual_variance"]))[0]
+
+    ax.axline([0, 0], [1, 1], linestyle="dashed", color="red", label="r={:.2f}".format(cor))
     ax.set_xlabel("SCT residual variance")
     ax.set_ylabel("pySCT residual variance")
+    ax.legend(frameon=False)
     fig.tight_layout()

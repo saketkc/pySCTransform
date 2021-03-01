@@ -29,10 +29,16 @@ from .fit import theta_lbfgs
 from .fit import theta_ml
 from .fit import estimate_mu_glm
 from .fit import estimate_mu_poisson
-#import jax.numpy as jnpy
-#from .fit import jax_alpha_lbfgs
-#from .jax_theta_ml import jax_theta_ml
-#from .jax_lbfgs import fit_nbinom_lbfgs_autograd
+
+import jax
+
+# import jax.numpy as jnpy
+# from .fit import jax_alpha_lbfgs
+# from .jax_theta_ml import jax_theta_ml
+# from .jax_lbfgs import fit_nbinom_lbfgs_autograd
+from .jax_bfgs import fit_nbinom_bfgs_jit
+from .jax_bfgs import fit_nbinom_bfgs_alpha_jit
+
 
 def is_outlier_naive(x, snr_threshold=25):
     """
@@ -159,6 +165,34 @@ def get_model_params_pergene(
         params = dict(zip(model_matrix.design_info.column_names, coef))
         theta = theta_ml(y=gene_umi, mu=mu)
         params["theta"] = theta
+    elif fit_type == "jax_jit":
+        params = estimate_mu_poisson(gene_umi, model_matrix)
+        coef = params["coef"]
+        mu = params["mu"]
+        params = dict(zip(model_matrix.design_info.column_names, coef))
+        gene_umi_jax = jax.device_put(gene_umi)
+        mu_jax = jax.device_put(mu)
+        theta = float(fit_nbinom_bfgs_jit(y=gene_umi_jax, mu=mu_jax).block_until_ready())
+        if theta < 0:
+            # replace with moment based estimator
+            theta = mu ** 2 / (npy.var(gene_umi) - mu)
+            if theta < 0:
+                theta = npy.inf
+        params["theta"] = theta
+    elif fit_type == "jax_alpha_jit":
+        params = estimate_mu_poisson(gene_umi, model_matrix)
+        coef = params["coef"]
+        mu = params["mu"]
+        params = dict(zip(model_matrix.design_info.column_names, coef))
+        gene_umi_jax = jax.device_put(gene_umi_jax)
+        mu_jax = jax.device_put(mu)
+        theta = float(fit_nbinom_bfgs_alpha_jit(y=gene_umi_jax, mu=mu_jax).block_until_ready())
+        if theta < 0:
+            # replace with moment based estimator
+            theta = mu ** 2 / (npy.var(gene_umi) - mu)
+            if theta < 0:
+                theta = npy.inf
+        params["theta"] = theta
     elif fit_type == "jax_theta_ml":
         params = estimate_mu_poisson(gene_umi, model_matrix)
         coef = params["coef"]
@@ -247,8 +281,8 @@ def get_model_params_allgene(
 
 def dds(genes_log10_gmean_step1, grid_points=2 ** 10):
     # density dependent downsampling
-    #print(genes_log10_gmean_step1.shape)
-    #if genes_log10_gmean_step1.ndim <2:
+    # print(genes_log10_gmean_step1.shape)
+    # if genes_log10_gmean_step1.ndim <2:
     #    genes_log10_gmean_step1 = genes_log10_gmean_step1[:, npy.newaxis]
     x, y = (
         FFTKDE(kernel="gaussian", bw="silverman")
@@ -324,7 +358,7 @@ def get_regularized_params(
         theta = npy.divide(
             npy.power(10, genes_log10_gmean),
             npy.power(10, model_parameters_fit["od_factor"] - 1),
-            #axis=0,
+            # axis=0,
         )
     model_parameters_fit["theta"] = theta
     if fixpoisson:
@@ -337,14 +371,16 @@ def get_regularized_params(
 
 def get_residuals(umi, model_matrix, model_parameters_fit, res_clip_range="default"):
 
-    subset = npy.asarray(model_parameters_fit[model_matrix.design_info.column_names].values)
+    subset = npy.asarray(
+        model_parameters_fit[model_matrix.design_info.column_names].values
+    )
     theta = npy.asarray(model_parameters_fit["theta"].values)
 
     mu = npy.exp(npy.dot(subset, model_matrix.T))
     # mu.columns = umi.columns
 
-    #variance = mu + (mu ** 2).divide(theta, axis=0)
-    variance = mu + npy.divide(mu ** 2, theta.reshape(-1,1))
+    # variance = mu + (mu ** 2).divide(theta, axis=0)
+    variance = mu + npy.divide(mu ** 2, theta.reshape(-1, 1))
 
     pearson_residuals = npy.divide(umi - mu, npy.sqrt(variance))
     if res_clip_range == "default":
@@ -491,7 +527,9 @@ def vst(
         model_parameters["od_factor"] = npy.log10(
             1
             + npy.divide(
-                npy.power(10, genes_log10_gmean_step1), model_parameters["theta"], axis=0
+                npy.power(10, genes_log10_gmean_step1),
+                model_parameters["theta"],
+                axis=0,
             )
         )
     outliers_df = pd.DataFrame(index=genes_step1)
@@ -499,6 +537,8 @@ def vst(
         col_outliers = is_outlier(model_parameters[col].values, genes_log10_gmean_step1)
         outliers_df[col] = col_outliers
     non_outliers = outliers_df.sum(1) == 0
+    outliers = outliers_df.sum(1) > 0
+    print(npy.sum(outliers))
     genes_non_outliers = genes_step1[non_outliers]
     model_parameters = model_parameters.loc[genes_non_outliers]
 
