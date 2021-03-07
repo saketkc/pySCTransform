@@ -1,11 +1,9 @@
 # -*- coding: utf-8 -*-
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 from adjustText import adjust_text
 from scipy.stats.stats import pearsonr
-
-
 
 
 def is_outlier(x, snr_threshold=25):
@@ -45,11 +43,11 @@ def plot_fit(pysct_results, fig=None):
     for index, column in enumerate(model_params_fit.columns):
         ax = fig.add_subplot(1, total_params, index + 1)
         model_param_col = model_params[column]
-        model_param_outliers = is_outlier(model_param_col)
+        # model_param_outliers = is_outlier(model_param_col)
         if column != "theta":
             ax.scatter(
-                genes_log10_gmean_step1[~model_param_outliers],
-                model_param_col[~model_param_outliers],
+                genes_log10_gmean_step1,  # [~model_param_outliers],
+                model_param_col,  # [~model_param_outliers],
                 s=1,
                 label="single gene estimate",
                 color="#2b8cbe",
@@ -64,8 +62,8 @@ def plot_fit(pysct_results, fig=None):
             ax.set_ylabel(column)
         else:
             ax.scatter(
-                genes_log10_gmean_step1[~model_param_outliers],
-                np.log10(model_param_col[~model_param_outliers]),
+                genes_log10_gmean_step1,  # [~model_param_outliers],
+                np.log10(model_param_col),  # [~model_param_outliers],
                 s=1,
                 label="single gene estimate",
                 color="#2b8cbe",
@@ -109,20 +107,28 @@ def plot_residual_var(pysct_results, topngenes=30, label_genes=True, ax=None):
     ax.scatter(topn["gene_gmean"], topn["residual_variance"], s=1.5, color="deeppink")
     ax.axhline(1, linestyle="dashed", color="red")
     ax.set_xlabel("Gene gmean")
-    ax.set_xlabel("Residual variance")
+    ax.set_ylabel("Residual variance")
     if label_genes:
         texts = [
             plt.text(row["gene_gmean"], row["residual_variance"], row["index"])
             for index, row in topn.iterrows()
         ]
         adjust_text(texts, arrowprops=dict(arrowstyle="-", color="k", lw=0.5))
-    fig.tight_layout()
+    # fig.tight_layout()
     return ax
 
 
-def compare_with_sct(vst_out, sct_modelparsfit_file, sct_geneattr_file):
+def compare_with_sct(
+    vst_out, sct_modelparsfit_file, sct_geneattr_file, sct_modelpars_file=None
+):
     sct_modelparsfit = pd.read_csv(sct_modelparsfit_file, index_col=0)
     sct_geneattr = pd.read_csv(sct_geneattr_file, index_col=0)
+    nplots = 3
+    if sct_modelpars_file:
+        nplots = 4
+        sct_modelpars = pd.read_csv(sct_modelpars_file, index_col=0)
+        sct_modelpars.columns = ["sct_" + x for x in sct_modelpars.columns]
+        model_pars_merged = vst_out["model_parameters"].join(sct_modelpars, how="inner")
 
     sct_modelparsfit.columns = ["sct_" + x for x in sct_modelparsfit.columns]
     sct_geneattr.columns = ["sct_" + x for x in sct_geneattr.columns]
@@ -132,11 +138,11 @@ def compare_with_sct(vst_out, sct_modelparsfit_file, sct_geneattr_file):
     )
     gene_attr_merged = vst_out["gene_attr"].join(sct_geneattr, how="inner")
 
-    fig = plt.figure(figsize=(12, 4))
-    ax = fig.add_subplot(131)
+    fig = plt.figure(figsize=(4 * nplots, 4))
+    ax = fig.add_subplot(1, nplots, 1)
     ax.scatter(
-        np.log10(model_parsfit_merged["sct_theta"]),
-        np.log10(model_parsfit_merged["theta"]),
+        model_parsfit_merged["sct_theta"],
+        model_parsfit_merged["theta"],
         s=1,
         color="black",
     )
@@ -144,10 +150,10 @@ def compare_with_sct(vst_out, sct_modelparsfit_file, sct_geneattr_file):
     ax.set_xlabel("SCT theta (regularized)")
     ax.set_ylabel("pySCT theta (regularized)")
 
-    ax = fig.add_subplot(132)
+    ax = fig.add_subplot(1, nplots, 2)
     ax.scatter(
-        np.log10(gene_attr_merged["sct_residual_mean"]),
-        np.log10(gene_attr_merged["residual_mean"]),
+        gene_attr_merged["sct_residual_mean"],
+        gene_attr_merged["residual_mean"],
         s=1,
         color="black",
     )
@@ -155,19 +161,49 @@ def compare_with_sct(vst_out, sct_modelparsfit_file, sct_geneattr_file):
     ax.set_xlabel("SCT residual mean")
     ax.set_ylabel("pySCT residual mean")
 
-    ax = fig.add_subplot(133)
+    ax = fig.add_subplot(1, nplots, 3)
     ax.scatter(
-        np.log10(gene_attr_merged["sct_residual_variance"]),
-        np.log10(gene_attr_merged["residual_variance"]),
+        gene_attr_merged["sct_residual_variance"],
+        gene_attr_merged["residual_variance"],
         s=1,
         color="black",
     )
+    gene_attr_merged_var = gene_attr_merged[
+        ["sct_residual_variance", "residual_variance"]
+    ].dropna()
     cor = pearsonr(
-        np.log10(gene_attr_merged["sct_residual_variance"]),
-        np.log10(gene_attr_merged["residual_variance"]))[0]
+        gene_attr_merged_var["sct_residual_variance"],
+        gene_attr_merged_var["residual_variance"],
+    )[0]
 
-    ax.axline([0, 0], [1, 1], linestyle="dashed", color="red", label="r={:.2f}".format(cor))
+    ax.axline(
+        [0, 0], [1, 1], linestyle="dashed", color="red", label="r={:.2f}".format(cor)
+    )
     ax.set_xlabel("SCT residual variance")
     ax.set_ylabel("pySCT residual variance")
     ax.legend(frameon=False)
+
+    if nplots == 4:
+        ax = fig.add_subplot(1, nplots, 4)
+        ax.scatter(
+            model_pars_merged["sct_theta"],
+            model_pars_merged["theta"],
+            s=1,
+            color="black",
+        )
+        ax.axline([0, 0], [1, 1], linestyle="dashed", color="red")
+        model_pars_merged = model_pars_merged.replace(np.inf, 1e5)  # dropna()
+        cor = pearsonr(model_pars_merged["sct_theta"], model_pars_merged["theta"])[0]
+        ax.set_xlabel("SCT theta")
+        ax.set_ylabel("pySCT theta")
+
+        ax.axline(
+            [0, 0],
+            [1, 1],
+            linestyle="dashed",
+            color="red",
+            label="r={:.2f}".format(cor),
+        )
+        ax.legend(frameon=False)
+
     fig.tight_layout()

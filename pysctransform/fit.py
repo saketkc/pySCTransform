@@ -1,14 +1,14 @@
-import sys
 import numbers
-import numpy as npy
+import sys
 
+import numpy as npy
+import statsmodels
+import statsmodels.api as sm
+from scipy.optimize import minimize
 from scipy.special import digamma
 from scipy.special import gammaln
 from scipy.special import polygamma
-from scipy.optimize import minimize
 from statsmodels.api import GLM
-import statsmodels
-import statsmodels.api as sm
 
 
 def trigamma(x):

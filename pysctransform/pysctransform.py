@@ -1,6 +1,7 @@
 """Main module."""
-import warnings
 import time
+import warnings
+
 from KDEpy import FFTKDE
 from scipy import interpolate
 from statsmodels.tools.sm_exceptions import ConvergenceWarning
@@ -10,34 +11,39 @@ warnings.simplefilter("ignore", RuntimeWarning)
 import concurrent.futures
 import logging
 
-from scipy.sparse import csr_matrix
 import numpy as npy
 import pandas as pd
 import statsmodels.api as sm
 import statsmodels.discrete.discrete_model as dm
+from joblib import Parallel
+from joblib import delayed
 from patsy import dmatrix
+from scipy import stats
+from scipy.sparse import csr_matrix
 from statsmodels.api import GLM
 from statsmodels.nonparametric.kernel_regression import KernelReg
 from tqdm import tqdm
 
-from scipy import stats
-
 logging.captureWarnings(True)
 
+
 from .fit import alpha_lbfgs
-from .fit import theta_lbfgs
-from .fit import theta_ml
 from .fit import estimate_mu_glm
 from .fit import estimate_mu_poisson
+from .fit import theta_lbfgs
+from .fit import theta_ml
+from .fit_glmgp import fit_glmgp
 
-import jax
-
+# import jax
 # import jax.numpy as jnpy
 # from .fit import jax_alpha_lbfgs
 # from .jax_theta_ml import jax_theta_ml
 # from .jax_lbfgs import fit_nbinom_lbfgs_autograd
-from .jax_bfgs import fit_nbinom_bfgs_jit
-from .jax_bfgs import fit_nbinom_bfgs_alpha_jit
+# from .jax_bfgs import fit_nbinom_bfgs_alpha_jit
+# from .jax_bfgs import fit_nbinom_bfgs_jit
+# from .r_bw import bw_SJr
+# from .r_bw import is_outlier_r
+# from .r_bw import ksmooth
 
 
 def is_outlier_naive(x, snr_threshold=25):
@@ -77,15 +83,15 @@ def robust_scale(x):
 
 
 def robust_scale_binned(y, x, breaks):
-    # bins = pd.cut(x=x, bins=breaks, ordered=True)
+    bins = pd.cut(x=x, bins=breaks, ordered=True)
 
     # categories = bins.categories
-    bins = npy.digitize(x=x, bins=breaks)
-    categories = npy.unique(bins)
-    score = npy.zeros(len(bins))
-    for cat in categories:
-        score_o = bins[bins == cat]
-        score[bins == cat] = robust_scale(score_o)
+    # bins = npy.digitize(x=x, bins=breaks)
+    df = pd.DataFrame({"x": y, "bins": bins})
+    tmp = df.groupby(["bins"]).apply(robust_scale)
+    order = df["bins"].argsort()
+    tmp = tmp.loc[order]  # sort_values(by=["bins"])
+    score = tmp["x"]
     return score
 
 
@@ -164,6 +170,8 @@ def get_model_params_pergene(
         mu = params["mu"]
         params = dict(zip(model_matrix.design_info.column_names, coef))
         theta = theta_ml(y=gene_umi, mu=mu)
+        if theta >= 1e5:
+            theta = npy.inf
         params["theta"] = theta
     elif fit_type == "jax_jit":
         params = estimate_mu_poisson(gene_umi, model_matrix)
@@ -172,7 +180,9 @@ def get_model_params_pergene(
         params = dict(zip(model_matrix.design_info.column_names, coef))
         gene_umi_jax = jax.device_put(gene_umi)
         mu_jax = jax.device_put(mu)
-        theta = float(fit_nbinom_bfgs_jit(y=gene_umi_jax, mu=mu_jax).block_until_ready())
+        theta = float(
+            fit_nbinom_bfgs_jit(y=gene_umi_jax, mu=mu_jax).block_until_ready()
+        )
         if theta < 0:
             # replace with moment based estimator
             theta = mu ** 2 / (npy.var(gene_umi) - mu)
@@ -186,7 +196,9 @@ def get_model_params_pergene(
         params = dict(zip(model_matrix.design_info.column_names, coef))
         gene_umi_jax = jax.device_put(gene_umi_jax)
         mu_jax = jax.device_put(mu)
-        theta = float(fit_nbinom_bfgs_alpha_jit(y=gene_umi_jax, mu=mu_jax).block_until_ready())
+        theta = float(
+            fit_nbinom_bfgs_alpha_jit(y=gene_umi_jax, mu=mu_jax).block_until_ready()
+        )
         if theta < 0:
             # replace with moment based estimator
             theta = mu ** 2 / (npy.var(gene_umi) - mu)
@@ -228,10 +240,40 @@ def get_model_params_pergene(
         params = dict(zip(model_matrix.design_info.column_names, coef))
         theta = fit_nbinom_lbfgs_autograd(y=gene_umi, mu=mu)
         params["theta"] = theta
-    elif fit_type == "tf":
-        # pass
-        params = fit_tensorflow(gene_umi, model_matrix)
     return params
+
+
+def get_model_params_pergene_glmgp(gene_umi, coldata, design="~ log10_umi"):
+    gene_umi = gene_umi.todense()
+    params = fit_glmgp(y=gene_umi, coldata=coldata, design=design)
+    return params
+
+
+def get_model_params_allgene_glmgp(umi, coldata, bin_size=500, threads=12):
+
+    results = []
+    results = Parallel(n_jobs=threads, backend="multiprocessing", batch_size=500)(
+        delayed(get_model_params_pergene_glmgp)(row, coldata) for row in umi
+    )
+    """
+    with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
+        # TODO this should remain sparse
+        # feed_list = [
+        #    (row.values.reshape((-1, 1)), model_matrix, fit_type)
+        #    for index, row in umi.iterrows()
+        # ]
+        feed_list = [(row.todense().reshape((-1, 1)), coldata) for row in umi]
+
+        results = list(
+            tqdm(
+                executor.map(lambda p: get_model_params_pergene_glmgp(*p), feed_list),
+                total=len(feed_list),
+            )
+        )
+    """
+    params_df = pd.DataFrame(results)
+
+    return params_df
 
 
 def get_model_params_allgene(
@@ -312,10 +354,10 @@ def get_regularized_params(
     poisson_genes=None,
 ):
     model_parameters = model_parameters.copy()
-    genes_log10_gmean_step1 = genes_log10_gmean_step1[
-        npy.isfinite(model_parameters.theta)
-    ]
-    genes_step1 = genes_step1[npy.isfinite(model_parameters.theta)]
+    # genes_log10_gmean_step1 = genes_log10_gmean_step1[
+    #    npy.isfinite(model_parameters.theta)
+    # ]
+    # genes_step1 = genes_step1[npy.isfinite(model_parameters.theta)]
 
     model_parameters_fit = pd.DataFrame(
         npy.nan, index=genes, columns=model_parameters.columns
@@ -351,14 +393,18 @@ def get_regularized_params(
         reg = KernelReg(endog=endog, exog=exog_fit, var_type="c", reg_type="ll", bw=bw)
         fit = reg.fit(x_points)
         model_parameters_fit[column] = npy.squeeze(fit[0])
+        # print(bw)
+        # bw = bw_SJr(genes_log10_gmean_step1, bw_adjust=bw_adjust)  # .values)
+        # print(bw)
+        # params = ksmooth(genes_log10_gmean, genes_log10_gmean_step1, endog, bw[0])
+        # index = model_parameters_fit.index.values[params["order"]-1]
+        # model_parameters_fit.loc[index, column] = params["smoothed"]
 
     if theta_regularization == "theta":
         theta = npy.power(10, (model_parameters["od_factor"]))
     else:
-        theta = npy.divide(
-            npy.power(10, genes_log10_gmean),
-            npy.power(10, model_parameters_fit["od_factor"] - 1),
-            # axis=0,
+        theta = npy.power(10, genes_log10_gmean) / (
+            npy.power(10, model_parameters_fit["od_factor"]) - 1
         )
     model_parameters_fit["theta"] = theta
     if fixpoisson:
@@ -418,7 +464,10 @@ def vst(
 
     """
     umi = umi.copy()
-    cell_names = None
+    if n_cells is None:
+        n_cells = umi.shape[1]
+    if n_genes is None:
+        n_genes = umi.shape[0]
     n_cells = min(n_cells, umi.shape[1])
     if gene_names is None:
         if not isinstance(umi, pd.DataFrame):
@@ -435,22 +484,15 @@ def vst(
 
     gene_names = npy.asarray(gene_names, dtype="U")
     cell_names = npy.asarray(cell_names, dtype="U")
-
-    if n_cells is None:
-        n_cells = umi.shape[1]
-    if n_genes is None:
-        n_genes = umi.shape[0]
-
-    genes_cell_count = npy.asarray((umi > 0.01).sum(1))
+    genes_cell_count = npy.asarray((umi >= 0.01).sum(1))
     min_cells_genes_index = npy.squeeze(genes_cell_count >= min_cells)
     genes = gene_names[min_cells_genes_index]
+    cell_attr = make_cell_attr(umi, cell_names)
     if isinstance(umi, pd.DataFrame):
         umi = umi.loc[genes]
     else:
         umi = umi[min_cells_genes_index, :]
     genes_log10_gmean = npy.log10(row_gmean_sparse(umi, gmean_eps=gmean_eps))
-
-    cell_attr = make_cell_attr(umi, cell_names)
 
     if n_cells is None and n_cells < umi.shape[1]:
         # downsample cells to speed up the first step
@@ -497,9 +539,13 @@ def vst(
             data_step1,
         )
 
-    model_parameters = get_model_params_allgene(
-        umi_step1, model_matrix, fit_type, threads, use_tf
-    )  # latent_var, cell_attr)
+    if fit_type == "glmgp":
+        model_parameters = get_model_params_allgene_glmgp(umi_step1, data_step1)
+
+    else:
+        model_parameters = get_model_params_allgene(
+            umi_step1, model_matrix, fit_type, threads, use_tf
+        )  # latent_var, cell_attr)
     model_parameters.index = genes_step1
 
     gene_attr = pd.DataFrame(index=genes)
@@ -525,22 +571,8 @@ def vst(
         model_parameters["od_factor"] = npy.log10(model_parameters["theta"])
     else:
         model_parameters["od_factor"] = npy.log10(
-            1
-            + npy.divide(
-                npy.power(10, genes_log10_gmean_step1),
-                model_parameters["theta"],
-                axis=0,
-            )
+            1 + npy.power(10, genes_log10_gmean_step1) / model_parameters["theta"]
         )
-    outliers_df = pd.DataFrame(index=genes_step1)
-    for col in model_parameters.columns:
-        col_outliers = is_outlier(model_parameters[col].values, genes_log10_gmean_step1)
-        outliers_df[col] = col_outliers
-    non_outliers = outliers_df.sum(1) == 0
-    outliers = outliers_df.sum(1) > 0
-    print(npy.sum(outliers))
-    genes_non_outliers = genes_step1[non_outliers]
-    model_parameters = model_parameters.loc[genes_non_outliers]
 
     end = time.time()
     print("Step1 done. Took {} seconds.".format(npy.ceil(end - start)))
@@ -551,6 +583,20 @@ def vst(
     # TODO: Fix
     print("Running Step2")
     start = time.time()
+    model_parameters_to_return = model_parameters.copy()
+    genes_log10_gmean_step1_to_return = genes_log10_gmean_step1.copy()
+    outliers_df = pd.DataFrame(index=genes_step1)
+    for col in model_parameters.columns:
+        col_outliers = is_outlier(model_parameters[col].values, genes_log10_gmean_step1)
+        outliers_df[col] = col_outliers
+    non_outliers = outliers_df.sum(1) == 0
+    outliers = outliers_df.sum(1) > 0
+    print("outliers: {}".format(npy.sum(outliers)))
+
+    genes_non_outliers = genes_step1[non_outliers]
+    genes_step1 = genes_step1[non_outliers]
+    genes_log10_gmean_step1 = genes_log10_gmean_step1[non_outliers]
+    model_parameters = model_parameters.loc[genes_non_outliers]
     model_parameters_fit = get_regularized_params(
         model_parameters,
         genes,
@@ -581,9 +627,9 @@ def vst(
 
     return {
         "residuals": residuals,
-        "model_parameters": model_parameters,
+        "model_parameters": model_parameters_to_return,
         "model_parameters_fit": model_parameters_fit,
-        "genes_log10_gmean_step1": genes_log10_gmean_step1,
+        "genes_log10_gmean_step1": genes_log10_gmean_step1_to_return,
         "genes_log10_gmean": genes_log10_gmean,
         "cell_attr": cell_attr,
         "model_matrix": model_matrix,

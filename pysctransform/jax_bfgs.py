@@ -1,19 +1,19 @@
-import numpy as onp
 import jax
 import jax.numpy as jnp
-from jax import grad, jit, vmap
-
+import numpy as onp
+from jax import grad
+from jax import jit
+from jax import vmap
 from jax.config import config
 
 config.update("jax_enable_x64", True)
 
 
 import pandas as pd
-
+from jax.scipy.optimize import minimize as jax_minimize
 from jax.scipy.special import digamma as jax_digamma
 from jax.scipy.special import gammaln as jax_gammaln
 from jax.scipy.special import polygamma as jax_polygamma
-from jax.scipy.optimize import minimize as jax_minimize
 
 
 @jax.jit
