@@ -115,7 +115,7 @@ def plot_residual_var(pysct_results, topngenes=30, label_genes=True, ax=None):
         ]
         adjust_text(texts, arrowprops=dict(arrowstyle="-", color="k", lw=0.5))
     # fig.tight_layout()
-    return ax
+    return fig
 
 
 def compare_with_sct(
@@ -207,3 +207,4 @@ def compare_with_sct(
         ax.legend(frameon=False)
 
     fig.tight_layout()
+    return fig
