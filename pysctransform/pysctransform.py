@@ -575,6 +575,7 @@ def vst(
         )
 
     end = time.time()
+    step1_time = npy.ceil(end - start)
     print("Step1 done. Took {} seconds.".format(npy.ceil(end - start)))
     # Step 2: Do regularization
 
@@ -610,6 +611,7 @@ def vst(
         poisson_genes=poisson_genes,
     )
     end = time.time()
+    step2_time = npy.ceil(end - start)
     print("Step2 done. Took {} seconds.".format(npy.ceil(end - start)))
 
     # Step 3: Calculate residuals
@@ -619,6 +621,7 @@ def vst(
     residuals.index = genes
     residuals.columns = cell_names
     end = time.time()
+    step3_time = npy.ceil(end - start)
     print("Step3 done. Took {} seconds.".format(npy.ceil(end - start)))
 
     gene_attr["theta_regularized"] = model_parameters["theta"]
@@ -634,6 +637,9 @@ def vst(
         "cell_attr": cell_attr,
         "model_matrix": model_matrix,
         "gene_attr": gene_attr,
+        "step1_time": step1_time,
+        "step2_time": step2_time,
+        "step3_time": step3_time
     }
 
 
