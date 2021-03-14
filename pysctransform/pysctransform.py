@@ -249,7 +249,7 @@ def get_model_params_pergene_glmgp(gene_umi, coldata, design="~ log10_umi"):
     return params
 
 
-def get_model_params_allgene_glmgp(umi, coldata, bin_size=500, threads=12):
+def get_model_params_allgene_glmgp(umi, coldata, bin_size=500, threads=12, verbosity=0):
 
     results = []
     results = Parallel(n_jobs=threads, backend="multiprocessing", batch_size=500)(
@@ -277,45 +277,32 @@ def get_model_params_allgene_glmgp(umi, coldata, bin_size=500, threads=12):
 
 
 def get_model_params_allgene(
-    umi, model_matrix, fit_type="fit", threads=12, use_tf=False
+    umi, model_matrix, fit_type="fit", threads=12, verbosity=0
 ):
 
     results = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
-        if use_tf:
-            feed_list = [
-                (
-                    tf.convert_to_tensor(row.values),
-                    tf.convert_to_tensor(model_matrix),
-                    # row.values,
-                    # model_matrix,
-                    model_matrix.design_info.column_names,
-                )
-                for index, row in umi.iterrows()
-            ]
-            results = list(
-                tqdm(
-                    executor.map(lambda p: do_tfp_fit(*p), feed_list),
-                    total=len(feed_list),
-                )
-            )
+        # TODO this should remain sparse
+        # feed_list = [
+        #    (row.values.reshape((-1, 1)), model_matrix, fit_type)
+        #    for index, row in umi.iterrows()
+        # ]
+        feed_list = [
+            (row.todense().reshape((-1, 1)), model_matrix, fit_type) for row in umi
+        ]
 
-        else:
-            # TODO this should remain sparse
-            # feed_list = [
-            #    (row.values.reshape((-1, 1)), model_matrix, fit_type)
-            #    for index, row in umi.iterrows()
-            # ]
-            feed_list = [
-                (row.todense().reshape((-1, 1)), model_matrix, fit_type) for row in umi
-            ]
-
+        if verbosity:
             results = list(
                 tqdm(
                     executor.map(lambda p: get_model_params_pergene(*p), feed_list),
                     total=len(feed_list),
                 )
             )
+        else:
+            results = list(
+                executor.map(lambda p: get_model_params_pergene(*p), feed_list)
+            )
+
     params_df = pd.DataFrame(results)
 
     return params_df
@@ -452,6 +439,7 @@ def vst(
     fit_type="theta_ml",
     theta_regularization="od_factor",
     fixpoisson=False,
+    verbosity=0,
 ):
     """
 
@@ -528,7 +516,9 @@ def vst(
         )
 
     # Step 1: Estimate theta
-    print("Running Step1")
+
+    if verbosity:
+        print("Running Step1")
     start = time.time()
     if batch_var is None:
         model_matrix = dmatrix(" + ".join(latent_var), data_step1)
@@ -562,8 +552,9 @@ def vst(
         poisson_genes = gene_attr[
             gene_attr["gene_amean"] >= gene_attr["gene_variance"]
         ].index.tolist()
-        print("Found ", len(poisson_genes), " poisson genes")
-        print("Setting there estimates to Inf")
+        if verbosity:
+            print("Found ", len(poisson_genes), " poisson genes")
+            print("Setting there estimates to Inf")
 
         model_parameters.loc[poisson_genes, "theta"] = npy.inf
 
@@ -576,13 +567,15 @@ def vst(
 
     end = time.time()
     step1_time = npy.ceil(end - start)
-    print("Step1 done. Took {} seconds.".format(npy.ceil(end - start)))
+    if verbosity:
+        print("Step1 done. Took {} seconds.".format(npy.ceil(end - start)))
     # Step 2: Do regularization
 
     # Remove high disp genes
     # Not optimal
     # TODO: Fix
-    print("Running Step2")
+    if verbosity:
+        print("Running Step2")
     start = time.time()
     model_parameters_to_return = model_parameters.copy()
     genes_log10_gmean_step1_to_return = genes_log10_gmean_step1.copy()
@@ -592,7 +585,8 @@ def vst(
         outliers_df[col] = col_outliers
     non_outliers = outliers_df.sum(1) == 0
     outliers = outliers_df.sum(1) > 0
-    print("outliers: {}".format(npy.sum(outliers)))
+    if verbosity:
+        print("outliers: {}".format(npy.sum(outliers)))
 
     genes_non_outliers = genes_step1[non_outliers]
     genes_step1 = genes_step1[non_outliers]
@@ -612,17 +606,21 @@ def vst(
     )
     end = time.time()
     step2_time = npy.ceil(end - start)
-    print("Step2 done. Took {} seconds.".format(npy.ceil(end - start)))
+    if verbosity:
+        print("Step2 done. Took {} seconds.".format(npy.ceil(end - start)))
 
     # Step 3: Calculate residuals
-    print("Running Step3")
+    if verbosity:
+        print("Running Step3")
+
     start = time.time()
     residuals = pd.DataFrame(get_residuals(umi, model_matrix, model_parameters_fit))
     residuals.index = genes
     residuals.columns = cell_names
     end = time.time()
     step3_time = npy.ceil(end - start)
-    print("Step3 done. Took {} seconds.".format(npy.ceil(end - start)))
+    if verbosity:
+        print("Step3 done. Took {} seconds.".format(npy.ceil(end - start)))
 
     gene_attr["theta_regularized"] = model_parameters["theta"]
     gene_attr["residual_mean"] = residuals.mean(1)
@@ -639,7 +637,7 @@ def vst(
         "gene_attr": gene_attr,
         "step1_time": step1_time,
         "step2_time": step2_time,
-        "step3_time": step3_time
+        "step3_time": step3_time,
     }
 
 
