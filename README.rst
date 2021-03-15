@@ -6,7 +6,7 @@ SCTransform for Python - interfaces with `ScanPy <https://scanpy.readthedocs.io/
 
 * Support for `batch_var` missing
 
-See `demo <notebooks/demo.ipynb>`_ for a comparison and `PBMC3k <notebooks/pbmc3k-umap.ipynb>`_ for comparison with log normalization approach.
+See `demo <notebooks/demo.ipynb>`_ for a comparison and `PBMC3k <https://github.com/saketkc/pySCTransform/blob/glmgp/notebooks/pbmc3k-umap.ipynb>`_ for comparison with log normalization approach.
 
 
 
