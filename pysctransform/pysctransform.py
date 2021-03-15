@@ -4,6 +4,7 @@ import warnings
 
 from KDEpy import FFTKDE
 from scipy import interpolate
+from scipy import sparse
 from statsmodels.tools.sm_exceptions import ConvergenceWarning
 
 warnings.simplefilter("ignore", ConvergenceWarning)
@@ -402,7 +403,30 @@ def get_regularized_params(
     return model_parameters_fit
 
 
-def get_residuals(umi, model_matrix, model_parameters_fit, res_clip_range="default"):
+def pearson_residual(y, mu, theta, min_var=-npy.inf):
+    variance = mu + npy.divide(mu ** 2, theta.reshape(-1, 1))
+    variance[variance < min_var] = min_var
+    pearson_residuals = npy.divide(y - mu, npy.sqrt(variance))
+    return pearson_residuals
+
+
+def deviance_residual(y, mu, theta, weight=1):
+    theta = npy.tile(theta.reshape(-1, 1), y.shape[1])
+    L = npy.multiply((y + theta), npy.log((y + theta) / (mu + theta)))
+    log_mu = npy.log(mu)
+    log_y = npy.log(y.maximum(1).todense())
+    r = npy.multiply(y.todense(), log_y - log_mu)
+    r = 2 * weight * (r - L)
+    return npy.multiply(npy.sqrt(r), npy.sign(y - mu))
+
+
+def get_residuals(
+    umi,
+    model_matrix,
+    model_parameters_fit,
+    residual_type="pearson",
+    res_clip_range="default",
+):
 
     subset = npy.asarray(
         model_parameters_fit[model_matrix.design_info.column_names].values
@@ -410,18 +434,39 @@ def get_residuals(umi, model_matrix, model_parameters_fit, res_clip_range="defau
     theta = npy.asarray(model_parameters_fit["theta"].values)
 
     mu = npy.exp(npy.dot(subset, model_matrix.T))
-    # mu.columns = umi.columns
+    # variance = mu + npy.divide(mu ** 2, theta.reshape(-1, 1))
+    # pearson_residuals = npy.divide(umi - mu, npy.sqrt(variance))
+    if residual_type == "pearson":
+        residuals = pearson_residual(umi, mu, theta)
+    elif residual_type == "deviance":
+        residuals = deviance_residual(umi, mu, theta)
 
-    # variance = mu + (mu ** 2).divide(theta, axis=0)
-    variance = mu + npy.divide(mu ** 2, theta.reshape(-1, 1))
-
-    pearson_residuals = npy.divide(umi - mu, npy.sqrt(variance))
     if res_clip_range == "default":
         res_clip_range = npy.sqrt(umi.shape[1])
-        pearson_residuals = npy.clip(
-            pearson_residuals, a_min=-res_clip_range, a_max=res_clip_range
-        )
-    return pearson_residuals
+        residuals = npy.clip(residuals, a_min=-res_clip_range, a_max=res_clip_range)
+    return residuals
+
+
+def correct(residuals, cell_attr, latent_var, model_parameters_fit, umi):
+    # replace value of latent variables with its median
+    cell_attr = cell_attr.copy()
+    for column in latent_var:
+        cell_attr.loc[:, column] = cell_attr.loc[:, column].median()
+    model_matrix = dmatrix(" + ".join(latent_var), cell_attr)
+    non_theta_columns = [
+        x for x in model_matrix.design_info.column_names if x != "theta"
+    ]
+    coefficients = model_parameters_fit[non_theta_columns]
+    theta = model_parameters_fit["theta"].values
+
+    mu = npy.exp(coefficients.dot(model_matrix.T))
+    mu = npy.exp(npy.dot(coefficients.values, model_matrix.T))
+    variance = mu + npy.divide(mu ** 2, npy.tile(theta.reshape(-1, 1), mu.shape[1]))
+    corrected_data = mu + residuals.values * npy.sqrt(variance)
+    corrected_data[corrected_data < 0] = 0
+    corrected_counts = sparse.csr_matrix(corrected_data.astype(int))
+
+    return corrected_counts
 
 
 def vst(
@@ -438,6 +483,7 @@ def vst(
     use_tf=False,
     fit_type="theta_ml",
     theta_regularization="od_factor",
+    residual_type="pearson",
     fixpoisson=False,
     verbosity=0,
 ):
@@ -614,7 +660,9 @@ def vst(
         print("Running Step3")
 
     start = time.time()
-    residuals = pd.DataFrame(get_residuals(umi, model_matrix, model_parameters_fit))
+    residuals = pd.DataFrame(
+        get_residuals(umi, model_matrix, model_parameters_fit, residual_type)
+    )
     residuals.index = genes
     residuals.columns = cell_names
     end = time.time()
@@ -626,10 +674,15 @@ def vst(
     gene_attr["residual_mean"] = residuals.mean(1)
     gene_attr["residual_variance"] = residuals.var(1)
 
+    corrected_counts = correct(
+        residuals, cell_attr, latent_var, model_parameters_fit, umi
+    )
+
     return {
         "residuals": residuals,
         "model_parameters": model_parameters_to_return,
         "model_parameters_fit": model_parameters_fit,
+        "corrected_counts": corrected_counts,
         "genes_log10_gmean_step1": genes_log10_gmean_step1_to_return,
         "genes_log10_gmean": genes_log10_gmean,
         "cell_attr": cell_attr,
@@ -639,28 +692,3 @@ def vst(
         "step2_time": step2_time,
         "step3_time": step3_time,
     }
-
-
-def correct(pearson_residuals, cell_attr, latent_var, model_parameters_fit, umi):
-    # replace value of latent variables with its median
-    cell_attr = cell_attr.copy()
-    for column in latent_var:
-        cell_attr.loc[:, column] = cell_attr.loc[:, column].median()
-    model_matrix = dmatrix(" + ".join(latent_var), cell_attr)
-    non_theta_columns = [
-        x for x in model_matrix.design_info.column_names if x != "theta"
-    ]
-    coefficients = model_parameters_fit[non_theta_columns]
-    theta = model_parameters_fit["theta"]
-
-    mu = npy.exp(coefficients.dot(model_matrix.T))
-    mu.columns = umi.columns
-
-    variance = mu + (mu ** 2).divide(theta, axis=0)
-    corrected_data = mu + pearson_residuals * npy.sqrt(variance)
-    corrected_data[corrected_data < 0] = 0
-    corrected_data = corrected_data.astype(int)
-    corrected_counts = pd.DataFrame(
-        corrected_data, index=pearson_residuals.index, columns=umi.columns
-    )
-    return corrected_counts
