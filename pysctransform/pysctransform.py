@@ -383,7 +383,6 @@ def get_regularized_params(
         model_parameters_fit[column] = npy.squeeze(fit[0])
         # print(bw)
         bw = bw_SJr(genes_log10_gmean_step1, bw_adjust=bw_adjust)  # .values)
-        print(bw)
         params = ksmooth(genes_log10_gmean, genes_log10_gmean_step1, endog, bw[0])
         index = model_parameters_fit.index.values[params["order"]-1]
         model_parameters_fit.loc[index, column] = params["smoothed"]
@@ -442,7 +441,7 @@ def get_residuals(
         residuals = deviance_residual(umi, mu, theta)
 
     if res_clip_range == "default":
-        res_clip_range = npy.sqrt(umi.shape[1])
+        res_clip_range = npy.sqrt(umi.shape[1]/30)
         residuals = npy.clip(residuals, a_min=-res_clip_range, a_max=res_clip_range)
     return residuals
 
