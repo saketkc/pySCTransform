@@ -24,7 +24,7 @@ def is_outlier(x, snr_threshold=25):
     return modified_z_score > snr_threshold
 
 
-def plot_fit(pysct_results, fig=None):
+def plot_fit(pysct_results, xaxis="gmean", fig=None):
     """
     Parameters
     ----------
@@ -33,8 +33,8 @@ def plot_fit(pysct_results, fig=None):
     """
     if fig is None:
         fig = plt.figure(figsize=(12, 3))
-    genes_log10_gmean = pysct_results["genes_log10_gmean"]
-    genes_log10_gmean_step1 = pysct_results["genes_log10_gmean_step1"]
+    genes_log10_mean = pysct_results["genes_log10_{}".format(xaxis)]
+    genes_log10_mean_step1 = pysct_results["genes_log10_{}_step1".format(xaxis)]
     model_params = pysct_results["model_parameters"]
     model_params_fit = pysct_results["model_parameters_fit"]
 
@@ -46,14 +46,14 @@ def plot_fit(pysct_results, fig=None):
         # model_param_outliers = is_outlier(model_param_col)
         if column != "theta":
             ax.scatter(
-                genes_log10_gmean_step1,  # [~model_param_outliers],
+                genes_log10_mean_step1,  # [~model_param_outliers],
                 model_param_col,  # [~model_param_outliers],
                 s=1,
                 label="single gene estimate",
                 color="#2b8cbe",
             )
             ax.scatter(
-                genes_log10_gmean,
+                genes_log10_mean,
                 model_params_fit[column],
                 s=2,
                 label="regularized",
@@ -62,24 +62,24 @@ def plot_fit(pysct_results, fig=None):
             ax.set_ylabel(column)
         else:
             ax.scatter(
-                genes_log10_gmean_step1,  # [~model_param_outliers],
+                genes_log10_mean_step1,  # [~model_param_outliers],
                 np.log10(model_param_col),  # [~model_param_outliers],
                 s=1,
                 label="single gene estimate",
                 color="#2b8cbe",
             )
             ax.scatter(
-                genes_log10_gmean,
+                genes_log10_mean,
                 np.log10(model_params_fit[column]),
                 s=2,
                 label="regularized",
                 color="#de2d26",
             )
             ax.set_ylabel("log10(" + column + ")")
-        if column != "od_factor":
+        if column == "od_factor":
             ax.set_ylabel("log10(od_factor)")
 
-        ax.set_xlabel("log10(gene_gmean)")
+        ax.set_xlabel("log10(gene_{})".format(xaxis))
         ax.set_title(column)
         ax.legend(frameon=False)
     _ = fig.tight_layout()
@@ -115,7 +115,7 @@ def plot_residual_var(pysct_results, topngenes=30, label_genes=True, ax=None):
         ]
         adjust_text(texts, arrowprops=dict(arrowstyle="-", color="k", lw=0.5))
     # fig.tight_layout()
-    return ax
+    return fig
 
 
 def compare_with_sct(
@@ -207,3 +207,4 @@ def compare_with_sct(
         ax.legend(frameon=False)
 
     fig.tight_layout()
+    return fig
