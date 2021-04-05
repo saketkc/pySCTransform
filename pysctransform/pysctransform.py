@@ -277,9 +277,7 @@ def get_model_params_allgene_glmgp(umi, coldata, bin_size=500, threads=12, verbo
     return params_df
 
 
-def get_model_params_allgene(
-    umi, model_matrix, method="fit", threads=12, verbosity=0
-):
+def get_model_params_allgene(umi, model_matrix, method="fit", threads=12, verbosity=0):
 
     results = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
@@ -384,7 +382,7 @@ def get_regularized_params(
         # print(bw)
         bw = bw_SJr(genes_log10_gmean_step1, bw_adjust=bw_adjust)  # .values)
         params = ksmooth(genes_log10_gmean, genes_log10_gmean_step1, endog, bw[0])
-        index = model_parameters_fit.index.values[params["order"]-1]
+        index = model_parameters_fit.index.values[params["order"] - 1]
         model_parameters_fit.loc[index, column] = params["smoothed"]
 
     if theta_regularization == "theta":
@@ -441,7 +439,7 @@ def get_residuals(
         residuals = deviance_residual(umi, mu, theta)
 
     if res_clip_range == "default":
-        res_clip_range = npy.sqrt(umi.shape[1]/30)
+        res_clip_range = npy.sqrt(umi.shape[1] / 30)
         residuals = npy.clip(residuals, a_min=-res_clip_range, a_max=res_clip_range)
     return residuals
 
@@ -481,6 +479,7 @@ def vst(
     threads=24,
     use_tf=False,
     method="theta_ml",
+    theta_given=10,
     theta_regularization="od_factor",
     residual_type="pearson",
     fixpoisson=False,
@@ -526,6 +525,7 @@ def vst(
     else:
         umi = umi[min_cells_genes_index, :]
     genes_log10_gmean = npy.log10(row_gmean_sparse(umi, gmean_eps=gmean_eps))
+    genes_log10_amean = npy.log10(npy.ravel(umi.mean(1)))
 
     if n_cells is None and n_cells < umi.shape[1]:
         # downsample cells to speed up the first step
@@ -538,12 +538,14 @@ def vst(
         genes_log10_gmean_step1 = npy.log10(
             row_gmean_sparse(umi[genes_step1, cells_step1], gmean_eps=gmean_eps)
         )
+        genes_log10_amean_step1 = npy.log10(npy.ravel(umi[genes_step1, cells_step1].mean(1)))
         umi_step1 = umi[:, cells_step1_index]
     else:
         cells_step1_index = npy.arange(len(cell_names), dtype=int)
         cells_step1 = cell_names
         genes_step1 = genes
         genes_log10_gmean_step1 = genes_log10_gmean
+        genes_log10_amean_step1 = genes_log10_amean
         umi_step1 = umi
 
     data_step1 = cell_attr.loc[cells_step1]
@@ -559,7 +561,15 @@ def vst(
         genes_log10_gmean_step1 = npy.log10(
             row_gmean_sparse(umi_step1, gmean_eps=gmean_eps)
         )
+        genes_log10_amean_step1 = npy.log10(umi_step1.mean(1))
 
+    if method == "offset":
+        cells_step1_index = npy.arange(len(cell_names), dtype=int)
+        cells_step1 = cell_names
+        genes_step1 = genes
+        genes_log10_gmean_step1 = genes_log10_gmean
+        genes_log10_amean_step1 = genes_log10_amean
+        umi_step1 = umi
     # Step 1: Estimate theta
 
     if verbosity:
@@ -574,14 +584,22 @@ def vst(
             data_step1,
         )
 
-    if method == "glmgp":
+    if method == "offset":
+        gene_mean = umi.mean(1)
+        mean_cell_sum = npy.mean(umi.sum(0))
+        model_parameters = pd.DataFrame(index=genes)
+        model_parameters["theta"] = theta_given
+        model_parameters["Intercept"] = npy.log(gene_mean) - npy.log(mean_cell_sum)
+        model_parameters["log10_umi"] = [npy.log(10)] * len(genes)
+
+    elif method == "glmgp":
         model_parameters = get_model_params_allgene_glmgp(umi_step1, data_step1)
 
     else:
         model_parameters = get_model_params_allgene(
             umi_step1, model_matrix, method, threads, use_tf
         )  # latent_var, cell_attr)
-    model_parameters.index = genes_step1
+        model_parameters.index = genes_step1
 
     gene_attr = pd.DataFrame(index=genes)
     gene_attr["gene_amean"] = umi.mean(1)
@@ -624,10 +642,13 @@ def vst(
     start = time.time()
     model_parameters_to_return = model_parameters.copy()
     genes_log10_gmean_step1_to_return = genes_log10_gmean_step1.copy()
+    genes_log10_amean_step1_to_return = genes_log10_amean_step1.copy()
     outliers_df = pd.DataFrame(index=genes_step1)
     for col in model_parameters.columns:
         ###col_outliers = is_outlier(model_parameters[col].values, genes_log10_gmean_step1)
-        col_outliers = is_outlier_r(model_parameters[col].values, genes_log10_gmean_step1)
+        col_outliers = is_outlier_r(
+            model_parameters[col].values, genes_log10_gmean_step1
+        )
         outliers_df[col] = col_outliers
     non_outliers = outliers_df.sum(1) == 0
     outliers = outliers_df.sum(1) > 0
@@ -638,18 +659,21 @@ def vst(
     genes_step1 = genes_step1[non_outliers]
     genes_log10_gmean_step1 = genes_log10_gmean_step1[non_outliers]
     model_parameters = model_parameters.loc[genes_non_outliers]
-    model_parameters_fit = get_regularized_params(
-        model_parameters,
-        genes,
-        genes_step1,
-        genes_log10_gmean_step1,
-        genes_log10_gmean,
-        cell_attr,
-        umi,
-        theta_regularization=theta_regularization,
-        fixpoisson=fixpoisson,
-        poisson_genes=poisson_genes,
-    )
+    if method == "offset":
+        model_parameters_fit = model_parameters.copy()
+    else:
+        model_parameters_fit = get_regularized_params(
+            model_parameters,
+            genes,
+            genes_step1,
+            genes_log10_gmean_step1,
+            genes_log10_gmean,
+            cell_attr,
+            umi,
+            theta_regularization=theta_regularization,
+            fixpoisson=fixpoisson,
+            poisson_genes=poisson_genes,
+        )
     end = time.time()
     step2_time = npy.ceil(end - start)
     if verbosity:
@@ -685,6 +709,8 @@ def vst(
         "corrected_counts": corrected_counts,
         "genes_log10_gmean_step1": genes_log10_gmean_step1_to_return,
         "genes_log10_gmean": genes_log10_gmean,
+        "genes_log10_amean_step1": genes_log10_amean_step1_to_return,
+        "genes_log10_amean": genes_log10_amean,
         "cell_attr": cell_attr,
         "model_matrix": model_matrix,
         "gene_attr": gene_attr,
