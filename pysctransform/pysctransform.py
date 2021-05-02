@@ -619,13 +619,15 @@ def vst(
     genes_log10_amean_step1_to_return = genes_log10_amean_step1.copy()
     outliers_df = pd.DataFrame(index=genes_step1)
     for col in model_parameters.columns:
-        ###col_outliers = is_outlier(model_parameters[col].values, genes_log10_gmean_step1)
-        col_outliers = is_outlier_r(
-            model_parameters[col].values, genes_log10_gmean_step1
-        )
+        col_outliers = is_outlier(model_parameters[col].values, genes_log10_gmean_step1)
+        #col_outliers = is_outlier_r(
+        #    model_parameters[col].values, genes_log10_gmean_step1
+        #)
         outliers_df[col] = col_outliers
     non_outliers = outliers_df.sum(1) == 0
+    non_outliers = non_outliers.tolist()
     outliers = outliers_df.sum(1) > 0
+    outliers = outliers.tolist()
     if verbosity:
         print("outliers: {}".format(npy.sum(outliers)))
 
