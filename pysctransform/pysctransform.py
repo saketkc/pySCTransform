@@ -33,7 +33,6 @@ from .fit import estimate_mu_glm
 from .fit import estimate_mu_poisson
 from .fit import theta_lbfgs
 from .fit import theta_ml
-from .fit_glmgp import fit_glmgp
 
 # import jax
 # import jax.numpy as jnpy
@@ -136,10 +135,6 @@ def row_gmean(umi, gmean_eps=1):
 
 def row_gmean_sparse(umi, gmean_eps=1):
 
-    # print(umi.shape)
-    # gmean = npy.apply_along_axis(func1d=row_gmean, axis=1, arr=umi, gmean_eps=gmean_eps)
-    # gmean = npy.exp(npy.log(umi + gmean_eps).mean(1)) - gmean_eps
-    # for row in umi:
     gmean = npy.asarray(npy.array([row_gmean(x.todense(), gmean_eps)[0] for x in umi]))
     gmean = npy.squeeze(gmean)
     return gmean
@@ -155,7 +150,7 @@ def _process_y(y):
 
 def get_model_params_pergene(
     gene_umi, model_matrix, method="theta_ml"
-):  # latent_var, cell_attr):
+):
     gene_umi = _process_y(gene_umi)
     if method == "sm_nb":
         model = dm.NegativeBinomial(gene_umi, model_matrix, loglike_method="nb2")
@@ -245,6 +240,7 @@ def get_model_params_pergene(
 
 
 def get_model_params_pergene_glmgp(gene_umi, coldata, design="~ log10_umi"):
+    from .fit_glmgp import fit_glmgp
     gene_umi = gene_umi.todense()
     params = fit_glmgp(y=gene_umi, coldata=coldata, design=design)
     return params
@@ -256,22 +252,6 @@ def get_model_params_allgene_glmgp(umi, coldata, bin_size=500, threads=12, verbo
     results = Parallel(n_jobs=threads, backend="multiprocessing", batch_size=500)(
         delayed(get_model_params_pergene_glmgp)(row, coldata) for row in umi
     )
-    """
-    with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
-        # TODO this should remain sparse
-        # feed_list = [
-        #    (row.values.reshape((-1, 1)), model_matrix, method)
-        #    for index, row in umi.iterrows()
-        # ]
-        feed_list = [(row.todense().reshape((-1, 1)), coldata) for row in umi]
-
-        results = list(
-            tqdm(
-                executor.map(lambda p: get_model_params_pergene_glmgp(*p), feed_list),
-                total=len(feed_list),
-            )
-        )
-    """
     params_df = pd.DataFrame(results)
 
     return params_df
@@ -309,9 +289,6 @@ def get_model_params_allgene(umi, model_matrix, method="fit", threads=12, verbos
 
 def dds(genes_log10_gmean_step1, grid_points=2 ** 10):
     # density dependent downsampling
-    # print(genes_log10_gmean_step1.shape)
-    # if genes_log10_gmean_step1.ndim <2:
-    #    genes_log10_gmean_step1 = genes_log10_gmean_step1[:, npy.newaxis]
     x, y = (
         FFTKDE(kernel="gaussian", bw="silverman")
         .fit(npy.asarray(genes_log10_gmean_step1))
@@ -320,7 +297,6 @@ def dds(genes_log10_gmean_step1, grid_points=2 ** 10):
     density = interpolate.interp1d(x=x, y=y, assume_sorted=False)
     sampling_prob = 1 / (density(genes_log10_gmean_step1) + npy.finfo(float).eps)
 
-    # sampling_prob = 1 / (density + npy.finfo(float).eps)
     return sampling_prob / sampling_prob.sum()
 
 
@@ -336,14 +312,10 @@ def get_regularized_params(
     bw_adjust=3,
     gmean_eps=1,
     theta_regularization="od_factor",
-    fixpoisson=False,
+    exclude_poisson=False,
     poisson_genes=None,
 ):
     model_parameters = model_parameters.copy()
-    # genes_log10_gmean_step1 = genes_log10_gmean_step1[
-    #    npy.isfinite(model_parameters.theta)
-    # ]
-    # genes_step1 = genes_step1[npy.isfinite(model_parameters.theta)]
 
     model_parameters_fit = pd.DataFrame(
         npy.nan, index=genes, columns=model_parameters.columns
@@ -392,7 +364,7 @@ def get_regularized_params(
             npy.power(10, model_parameters_fit["od_factor"]) - 1
         )
     model_parameters_fit["theta"] = theta
-    if fixpoisson:
+    if exclude_poisson:
         # relace theta by inf
         if poisson_genes is not None:
             model_parameters_fit.loc[poisson_genes, "theta"] = npy.inf
@@ -482,7 +454,7 @@ def vst(
     theta_given=10,
     theta_regularization="od_factor",
     residual_type="pearson",
-    fixpoisson=False,
+    exclude_poisson=False,
     verbosity=0,
 ):
     """
@@ -538,7 +510,9 @@ def vst(
         genes_log10_gmean_step1 = npy.log10(
             row_gmean_sparse(umi[genes_step1, cells_step1], gmean_eps=gmean_eps)
         )
-        genes_log10_amean_step1 = npy.log10(npy.ravel(umi[genes_step1, cells_step1].mean(1)))
+        genes_log10_amean_step1 = npy.log10(
+            npy.ravel(umi[genes_step1, cells_step1].mean(1))
+        )
         umi_step1 = umi[:, cells_step1_index]
     else:
         cells_step1_index = npy.arange(len(cell_names), dtype=int)
@@ -611,7 +585,7 @@ def vst(
     gene_attr["gene_variance"] = sparse_var(umi, 1)  # umi.var(1)
 
     poisson_genes = None
-    if fixpoisson:
+    if exclude_poisson:
         poisson_genes = gene_attr[
             gene_attr["gene_amean"] >= gene_attr["gene_variance"]
         ].index.tolist()
@@ -645,13 +619,15 @@ def vst(
     genes_log10_amean_step1_to_return = genes_log10_amean_step1.copy()
     outliers_df = pd.DataFrame(index=genes_step1)
     for col in model_parameters.columns:
-        ###col_outliers = is_outlier(model_parameters[col].values, genes_log10_gmean_step1)
-        col_outliers = is_outlier_r(
-            model_parameters[col].values, genes_log10_gmean_step1
-        )
+        col_outliers = is_outlier(model_parameters[col].values, genes_log10_gmean_step1)
+        #col_outliers = is_outlier_r(
+        #    model_parameters[col].values, genes_log10_gmean_step1
+        #)
         outliers_df[col] = col_outliers
     non_outliers = outliers_df.sum(1) == 0
+    non_outliers = non_outliers.tolist()
     outliers = outliers_df.sum(1) > 0
+    outliers = outliers.tolist()
     if verbosity:
         print("outliers: {}".format(npy.sum(outliers)))
 
@@ -671,7 +647,7 @@ def vst(
             cell_attr,
             umi,
             theta_regularization=theta_regularization,
-            fixpoisson=fixpoisson,
+            exclude_poisson=exclude_poisson,
             poisson_genes=poisson_genes,
         )
     end = time.time()
