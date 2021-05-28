@@ -1,20 +1,18 @@
 import numpy as np
-import rpy2
-import rpy2.robjects as ro
-import rpy2.robjects.numpy2ri
-from rpy2.robjects import Formula
-from rpy2.robjects import IntVector
-from rpy2.robjects import pandas2ri
-from rpy2.robjects import r
-from rpy2.robjects.packages import importr
-
-pandas2ri.activate()
-
-rpy2.robjects.numpy2ri.activate()
-glmgp = importr("glmGamPoi")
-
 
 def fit_glmgp(y, coldata, design="~ log10_umi"):
+    import rpy2
+    import rpy2.robjects as ro
+    import rpy2.robjects.numpy2ri
+    from rpy2.robjects import Formula
+    from rpy2.robjects import IntVector
+    from rpy2.robjects import pandas2ri
+    from rpy2.robjects import r
+    from rpy2.robjects.packages import importr
+    pandas2ri.activate()
+
+    rpy2.robjects.numpy2ri.activate()
+    glmgp = importr("glmGamPoi")
     y_ro = np.asmatrix(y)
     # design_matrix_ro = np.asarray(design_matrix)
     fit = glmgp.glm_gp(
