@@ -33,7 +33,6 @@ from .fit import estimate_mu_glm
 from .fit import estimate_mu_poisson
 from .fit import theta_lbfgs
 from .fit import theta_ml
-from .fit_glmgp import fit_glmgp
 
 # import jax
 # import jax.numpy as jnpy
@@ -241,6 +240,7 @@ def get_model_params_pergene(
 
 
 def get_model_params_pergene_glmgp(gene_umi, coldata, design="~ log10_umi"):
+    from .fit_glmgp import fit_glmgp
     gene_umi = gene_umi.todense()
     params = fit_glmgp(y=gene_umi, coldata=coldata, design=design)
     return params
