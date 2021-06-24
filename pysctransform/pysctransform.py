@@ -352,10 +352,10 @@ def get_regularized_params(
         fit = reg.fit(x_points)
         model_parameters_fit[column] = npy.squeeze(fit[0])
         # print(bw)
-        bw = bw_SJr(genes_log10_gmean_step1, bw_adjust=bw_adjust)  # .values)
-        params = ksmooth(genes_log10_gmean, genes_log10_gmean_step1, endog, bw[0])
-        index = model_parameters_fit.index.values[params["order"] - 1]
-        model_parameters_fit.loc[index, column] = params["smoothed"]
+        ##bw = bw_SJr(genes_log10_gmean_step1, bw_adjust=bw_adjust)  # .values)
+        ##params = ksmooth(genes_log10_gmean, genes_log10_gmean_step1, endog, bw[0])
+        ##index = model_parameters_fit.index.values[params["order"] - 1]
+        ##model_parameters_fit.loc[index, column] = params["smoothed"]
 
     if theta_regularization == "theta":
         theta = npy.power(10, (model_parameters["od_factor"]))
@@ -568,7 +568,7 @@ def vst(
 
     elif method == "glmgp":
         model_parameters = get_model_params_allgene_glmgp(umi_step1, data_step1)
-
+        model_parameters.index = genes_step1
     else:
         model_parameters = get_model_params_allgene(
             umi_step1, model_matrix, method, threads, use_tf
@@ -631,8 +631,8 @@ def vst(
     if verbosity:
         print("outliers: {}".format(npy.sum(outliers)))
 
-    genes_non_outliers = genes_step1[non_outliers]
-    genes_step1 = genes_step1[non_outliers]
+    genes_non_outliers = list(genes_step1[non_outliers])
+    genes_step1 = list(genes_step1[non_outliers])
     genes_log10_gmean_step1 = genes_log10_gmean_step1[non_outliers]
     model_parameters = model_parameters.loc[genes_non_outliers]
     if method == "offset":
