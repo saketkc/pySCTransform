@@ -596,7 +596,7 @@ def vst(
 
     elif method == "glmgp":
         model_parameters = get_model_params_allgene_glmgp(umi_step1, data_step1)
-
+        model_parameters.index = genes_step1
     else:
         model_parameters = get_model_params_allgene(
             umi_step1, model_matrix, method, threads, use_tf
