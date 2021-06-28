@@ -79,7 +79,7 @@ def robust_scale_binned_r(y, x, breaks):
     ##score[o] = tmp["x"]
     order = df["bins"].argsort()
     tmp = tmp.loc[order]  # sort_values(by=["bins"])
-    score = tmp["x"]
+    score = np.asarray(tmp["x"].values)
     return score
 
 

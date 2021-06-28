@@ -178,35 +178,3 @@ def theta_lbfgs(y, mu, maxoverdispersion=1e5):
     )
     return theta.x[0]
 
-
-def fit_tensorflow(response, model_matrix):
-    # Not being used currently
-    import tensorflow as tf
-    import tensorflow_probability as tfp
-
-    @tf.function(autograph=False)
-    def tfp_fit(response, model_matrix):
-        return tfp.glm.fit(
-            model_matrix=model_matrix,
-            response=response,
-            model=tfp.glm.NegativeBinomial(),
-            maximum_iterations=100,
-        )
-
-    def do_tfp_fit(response, model_matrix, design_info_cols):
-        [model_coefficients, linear_response, is_converged, num_iter] = [
-            t.numpy()
-            for t in tfp_fit(
-                response,
-                model_matrix,
-            )
-        ]
-        theta = linear_response.mean() ** 2 / (
-            linear_response.var() - linear_response.mean()
-        )
-        if theta < 0:
-            theta = -theta
-        theta = 1 / theta
-        params = dict(zip(design_info_cols, model_coefficients))
-        params["theta"] = theta
-        return params

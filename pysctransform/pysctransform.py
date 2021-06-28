@@ -206,7 +206,7 @@ def get_model_params_pergene_glmgp_offset(gene_umi, coldata, log_umi, design="~ 
     return params
 
 
-def get_model_params_allgene_glmgp(umi, coldata, bin_size=500, threads=12, use_offset=False, verbosity=0):
+def get_model_params_allgene_glmgp(umi, coldata, bin_size=500, threads=2, use_offset=False, verbosity=0):
 
     results = []
     log_umi = npy.log(npy.ravel(umi.sum(0) ))
