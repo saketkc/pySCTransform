@@ -34,14 +34,8 @@ from .fit import estimate_mu_poisson
 from .fit import theta_lbfgs
 from .fit import theta_ml
 from .fit_glmgp import fit_glmgp
+from .fit_glmgp import fit_glmgp_offset
 
-# import jax
-# import jax.numpy as jnpy
-# from .fit import jax_alpha_lbfgs
-# from .jax_theta_ml import jax_theta_ml
-# from .jax_lbfgs import fit_nbinom_lbfgs_autograd
-# from .jax_bfgs import fit_nbinom_bfgs_alpha_jit
-# from .jax_bfgs import fit_nbinom_bfgs_jit
 from .r_bw import bw_SJr
 from .r_bw import is_outlier_r
 from .r_bw import ksmooth
@@ -154,7 +148,7 @@ def _process_y(y):
 
 
 def get_model_params_pergene(
-    gene_umi, model_matrix, method="theta_ml"
+    gene_umi, model_matrix, method="theta_ml", offset_intercept = None, cell_umi=None, fix_slope = False
 ):  # latent_var, cell_attr):
     gene_umi = _process_y(gene_umi)
     if method == "sm_nb":
@@ -166,52 +160,23 @@ def get_model_params_pergene(
         params = dict(zip(model_matrix.design_info.column_names, params[:-1]))
         params["theta"] = theta
     elif method == "theta_ml":
-        params = estimate_mu_poisson(gene_umi, model_matrix)
-        coef = params["coef"]
-        mu = params["mu"]
-        params = dict(zip(model_matrix.design_info.column_names, coef))
-        theta = theta_ml(y=gene_umi, mu=mu)
+        if fix_slope:
+            gene_mean = npy.mean(gene_umi)
+            params = pd.DataFrame(index=[0])
+            params["theta"] = npy.nan
+            params["Intercept"] = offset_intercept
+            params["log10_umi"] = npy.log(10)
+            mu = npy.exp(offset_intercept + npy.log(10)*cell_umi)
+            assert len(gene_umi) == len(mu)
+            theta = theta_ml(y=gene_umi, mu=mu)
+        else:
+            params = estimate_mu_poisson(gene_umi, model_matrix)
+            coef = params["coef"]
+            mu = params["mu"]
+            params = dict(zip(model_matrix.design_info.column_names, coef))
+            theta = theta_ml(y=gene_umi, mu=mu)
         if theta >= 1e5:
             theta = npy.inf
-        params["theta"] = theta
-    elif method == "jax_jit":
-        params = estimate_mu_poisson(gene_umi, model_matrix)
-        coef = params["coef"]
-        mu = params["mu"]
-        params = dict(zip(model_matrix.design_info.column_names, coef))
-        gene_umi_jax = jax.device_put(gene_umi)
-        mu_jax = jax.device_put(mu)
-        theta = float(
-            fit_nbinom_bfgs_jit(y=gene_umi_jax, mu=mu_jax).block_until_ready()
-        )
-        if theta < 0:
-            # replace with moment based estimator
-            theta = mu ** 2 / (npy.var(gene_umi) - mu)
-            if theta < 0:
-                theta = npy.inf
-        params["theta"] = theta
-    elif method == "jax_alpha_jit":
-        params = estimate_mu_poisson(gene_umi, model_matrix)
-        coef = params["coef"]
-        mu = params["mu"]
-        params = dict(zip(model_matrix.design_info.column_names, coef))
-        gene_umi_jax = jax.device_put(gene_umi_jax)
-        mu_jax = jax.device_put(mu)
-        theta = float(
-            fit_nbinom_bfgs_alpha_jit(y=gene_umi_jax, mu=mu_jax).block_until_ready()
-        )
-        if theta < 0:
-            # replace with moment based estimator
-            theta = mu ** 2 / (npy.var(gene_umi) - mu)
-            if theta < 0:
-                theta = npy.inf
-        params["theta"] = theta
-    elif method == "jax_theta_ml":
-        params = estimate_mu_poisson(gene_umi, model_matrix)
-        coef = params["coef"]
-        mu = params["mu"]
-        params = dict(zip(model_matrix.design_info.column_names, coef))
-        theta = jax_theta_ml(y=gene_umi, mu=mu)
         params["theta"] = theta
     elif method == "alpha_lbfgs":
         params = estimate_mu_poisson(gene_umi, model_matrix)
@@ -220,26 +185,12 @@ def get_model_params_pergene(
         params = dict(zip(model_matrix.design_info.column_names, coef))
         theta = alpha_lbfgs(y=gene_umi, mu=mu)
         params["theta"] = theta
-    elif method == "jax_alpha_lbfgs":
-        params = estimate_mu_poisson(gene_umi, model_matrix)
-        coef = params["coef"]
-        mu = params["mu"]
-        params = dict(zip(model_matrix.design_info.column_names, coef))
-        theta = jax_alpha_lbfgs(y=gene_umi, mu=mu)
-        params["theta"] = theta
     elif method == "theta_lbfgs":
         params = estimate_mu_poisson(gene_umi, model_matrix)
         coef = params["coef"]
         mu = params["mu"]
         params = dict(zip(model_matrix.design_info.column_names, coef))
         theta = theta_lbfgs(y=gene_umi, mu=mu)
-        params["theta"] = theta
-    elif method == "autograd":
-        params = estimate_mu_poisson(gene_umi, model_matrix)
-        coef = params["coef"]
-        mu = params["mu"]
-        params = dict(zip(model_matrix.design_info.column_names, coef))
-        theta = fit_nbinom_lbfgs_autograd(y=gene_umi, mu=mu)
         params["theta"] = theta
     return params
 
@@ -249,37 +200,41 @@ def get_model_params_pergene_glmgp(gene_umi, coldata, design="~ log10_umi"):
     params = fit_glmgp(y=gene_umi, coldata=coldata, design=design)
     return params
 
+def get_model_params_pergene_glmgp_offset(gene_umi, coldata, log_umi, design="~ 1"):
+    gene_umi = gene_umi.todense()
+    params = fit_glmgp_offset(y=gene_umi, coldata=coldata, design=design, log_umi=log_umi)
+    return params
 
-def get_model_params_allgene_glmgp(umi, coldata, bin_size=500, threads=12, verbosity=0):
+
+def get_model_params_allgene_glmgp(umi, coldata, bin_size=500, threads=12, use_offset=False, verbosity=0):
 
     results = []
-    results = Parallel(n_jobs=threads, backend="multiprocessing", batch_size=500)(
-        delayed(get_model_params_pergene_glmgp)(row, coldata) for row in umi
-    )
-    """
-    with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
-        # TODO this should remain sparse
-        # feed_list = [
-        #    (row.values.reshape((-1, 1)), model_matrix, method)
-        #    for index, row in umi.iterrows()
-        # ]
-        feed_list = [(row.todense().reshape((-1, 1)), coldata) for row in umi]
-
-        results = list(
-            tqdm(
-                executor.map(lambda p: get_model_params_pergene_glmgp(*p), feed_list),
-                total=len(feed_list),
-            )
+    log_umi = npy.log(npy.ravel(umi.sum(0) ))
+    if use_offset:
+        results = Parallel(n_jobs=threads, backend="multiprocessing", batch_size=500)(
+            delayed(get_model_params_pergene_glmgp_offset)(row, coldata, log_umi) for row in umi
         )
-    """
+    else:
+        results = Parallel(n_jobs=threads, backend="multiprocessing", batch_size=500)(
+            delayed(get_model_params_pergene_glmgp)(row, coldata) for row in umi
+        )
     params_df = pd.DataFrame(results)
 
     return params_df
 
 
-def get_model_params_allgene(umi, model_matrix, method="fit", threads=12, verbosity=0):
+def get_model_params_allgene(umi, model_matrix, method="fit", threads=12, fix_slope=False, verbosity=0):
 
     results = []
+    if fix_slope:
+        gene_mean = umi.mean(1)
+        cell_umi = npy.log10(npy.ravel(umi.sum(0)))
+        mean_cell_sum = npy.mean(cell_umi)
+        offset_intercept = npy.log(gene_mean) - npy.log(mean_cell_sum)
+        offset_intercept = npy.ravel(offset_intercept)
+    else:
+        offset_intercept = [npy.nan]*umi.shape[0]
+        cell_umi = [npy.nan]*umi.shape[0]
     with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
         # TODO this should remain sparse
         # feed_list = [
@@ -287,7 +242,7 @@ def get_model_params_allgene(umi, model_matrix, method="fit", threads=12, verbos
         #    for index, row in umi.iterrows()
         # ]
         feed_list = [
-            (row.todense().reshape((-1, 1)), model_matrix, method) for row in umi
+            (row.todense().reshape((-1, 1)), model_matrix, method, offset_intercept[i], cell_umi, fix_slope) for i, row in enumerate(umi)
         ]
 
         if verbosity:
@@ -336,7 +291,7 @@ def get_regularized_params(
     bw_adjust=3,
     gmean_eps=1,
     theta_regularization="od_factor",
-    fixpoisson=False,
+    exclude_poisson=False,
     poisson_genes=None,
 ):
     model_parameters = model_parameters.copy()
@@ -392,7 +347,7 @@ def get_regularized_params(
             npy.power(10, model_parameters_fit["od_factor"]) - 1
         )
     model_parameters_fit["theta"] = theta
-    if fixpoisson:
+    if exclude_poisson:
         # relace theta by inf
         if poisson_genes is not None:
             model_parameters_fit.loc[poisson_genes, "theta"] = npy.inf
@@ -479,12 +434,12 @@ def vst(
     min_cells=5,
     n_genes=2000,
     threads=24,
-    use_tf=False,
     method="theta_ml",
     theta_given=10,
     theta_regularization="od_factor",
     residual_type="pearson",
-    fixpoisson=False,
+    exclude_poisson=False,
+    fix_slope=False,
     verbosity=0,
 ):
     """
@@ -597,9 +552,12 @@ def vst(
     elif method == "glmgp":
         model_parameters = get_model_params_allgene_glmgp(umi_step1, data_step1)
         model_parameters.index = genes_step1
+    elif method == "fix-slope":
+        model_parameters = get_model_params_allgene_glmgp(umi_step1, data_step1, use_offset=True)
+        model_parameters.index = genes_step1
     else:
         model_parameters = get_model_params_allgene(
-            umi_step1, model_matrix, method, threads, use_tf
+            umi_step1, model_matrix, method, threads, fix_slope
         )  # latent_var, cell_attr)
         model_parameters.index = genes_step1
 
@@ -613,7 +571,7 @@ def vst(
     gene_attr["gene_variance"] = sparse_var(umi, 1)  # umi.var(1)
 
     poisson_genes = None
-    if fixpoisson:
+    if exclude_poisson:
         poisson_genes = gene_attr[
             gene_attr["gene_amean"] >= gene_attr["gene_variance"]
         ].index.tolist()
@@ -675,7 +633,7 @@ def vst(
             cell_attr,
             umi,
             theta_regularization=theta_regularization,
-            fixpoisson=fixpoisson,
+            exclude_poisson=exclude_poisson,
             poisson_genes=poisson_genes,
         )
     end = time.time()
