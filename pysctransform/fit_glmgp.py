@@ -28,3 +28,6 @@ def fit_glmgp(y, coldata, design="~ log10_umi"):
         "Intercept": beta[0],
         "log10_umi": beta[1],
     }
+
+def fit_glmgp_mle(y, coldata, design = "~ 1"):
+    pass

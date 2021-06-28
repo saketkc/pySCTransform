@@ -314,6 +314,7 @@ def get_regularized_params(
     theta_regularization="od_factor",
     exclude_poisson=False,
     poisson_genes=None,
+    method="theta_ml",
 ):
     model_parameters = model_parameters.copy()
 
@@ -347,15 +348,16 @@ def get_regularized_params(
             continue
         endog = model_parameters.loc[genes_step1, column].values
         exog_fit = genes_log10_gmean_step1  # .values
-        bw = bwSJ(genes_log10_gmean_step1, bw_adjust=bw_adjust)  # .values)
-        reg = KernelReg(endog=endog, exog=exog_fit, var_type="c", reg_type="ll", bw=bw)
-        fit = reg.fit(x_points)
-        model_parameters_fit[column] = npy.squeeze(fit[0])
-        # print(bw)
-        ##bw = bw_SJr(genes_log10_gmean_step1, bw_adjust=bw_adjust)  # .values)
-        ##params = ksmooth(genes_log10_gmean, genes_log10_gmean_step1, endog, bw[0])
-        ##index = model_parameters_fit.index.values[params["order"] - 1]
-        ##model_parameters_fit.loc[index, column] = params["smoothed"]
+        if method == "glgmp":
+            bw = bw_SJr(genes_log10_gmean_step1, bw_adjust=bw_adjust)  # .values)
+            params = ksmooth(genes_log10_gmean, genes_log10_gmean_step1, endog, bw[0])
+            index = model_parameters_fit.index.values[params["order"] - 1]
+            model_parameters_fit.loc[index, column] = params["smoothed"]
+        else:
+            bw = bwSJ(genes_log10_gmean_step1, bw_adjust=bw_adjust)  # .values)
+            reg = KernelReg(endog=endog, exog=exog_fit, var_type="c", reg_type="ll", bw=bw)
+            fit = reg.fit(x_points)
+            model_parameters_fit[column] = npy.squeeze(fit[0])
 
     if theta_regularization == "theta":
         theta = npy.power(10, (model_parameters["od_factor"]))
@@ -410,8 +412,11 @@ def get_residuals(
     elif residual_type == "deviance":
         residuals = deviance_residual(umi, mu, theta)
 
-    if res_clip_range == "default":
+    if res_clip_range == "seurat":
         res_clip_range = npy.sqrt(umi.shape[1] / 30)
+        residuals = npy.clip(residuals, a_min=-res_clip_range, a_max=res_clip_range)
+    if res_clip_range == "default":
+        res_clip_range = npy.sqrt(umi.shape[1])
         residuals = npy.clip(residuals, a_min=-res_clip_range, a_max=res_clip_range)
     return residuals
 
@@ -595,13 +600,6 @@ def vst(
 
         model_parameters.loc[poisson_genes, "theta"] = npy.inf
 
-    if theta_regularization == "theta":
-        model_parameters["od_factor"] = npy.log10(model_parameters["theta"])
-    else:
-        model_parameters["od_factor"] = npy.log10(
-            1 + npy.power(10, genes_log10_gmean_step1) / model_parameters["theta"]
-        )
-
     end = time.time()
     step1_time = npy.ceil(end - start)
     if verbosity:
@@ -614,16 +612,28 @@ def vst(
     if verbosity:
         print("Running Step2")
     start = time.time()
-    model_parameters_to_return = model_parameters.copy()
     genes_log10_gmean_step1_to_return = genes_log10_gmean_step1.copy()
     genes_log10_amean_step1_to_return = genes_log10_amean_step1.copy()
     outliers_df = pd.DataFrame(index=genes_step1)
     for col in model_parameters.columns:
-        col_outliers = is_outlier(model_parameters[col].values, genes_log10_gmean_step1)
-        #col_outliers = is_outlier_r(
-        #    model_parameters[col].values, genes_log10_gmean_step1
-        #)
+        if method == "glmgp":
+            col_outliers = is_outlier_r(
+                npy.asarray(model_parameters[col].values.tolist()), npy.asarray(genes_log10_gmean_step1.tolist())
+            )
+        else:
+            col_outliers = is_outlier(
+                model_parameters[col].values, genes_log10_gmean_step1
+            )
+
         outliers_df[col] = col_outliers
+    if theta_regularization == "theta":
+        model_parameters["od_factor"] = npy.log10(model_parameters["theta"])
+    else:
+        model_parameters["od_factor"] = npy.log10(
+            1 + npy.power(10, genes_log10_gmean_step1) / model_parameters["theta"]
+        )
+    model_parameters_to_return = model_parameters.copy()
+
     non_outliers = outliers_df.sum(1) == 0
     non_outliers = non_outliers.tolist()
     outliers = outliers_df.sum(1) > 0
@@ -649,6 +659,7 @@ def vst(
             theta_regularization=theta_regularization,
             exclude_poisson=exclude_poisson,
             poisson_genes=poisson_genes,
+            method=method
         )
     end = time.time()
     step2_time = npy.ceil(end - start)

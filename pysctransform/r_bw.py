@@ -22,7 +22,6 @@ from scipy import stats as scipystats
 def bw_SJr(y, bw_adjust=3):
     if rpy2 is None:
         raise ImportError("bw_SJr requires rpy2 which is not installed.")
-    rpy2.robjects.numpy2ri.activate()
     stats = importr("stats")
     base = importr("base")
     return np.asarray(stats.bw_SJ(y)) * bw_adjust
@@ -31,7 +30,6 @@ def bw_SJr(y, bw_adjust=3):
 def ksmooth(genes_log_gmean, genes_log_gmean_step1, col_to_smooth, bw):
     if rpy2 is None:
         raise ImportError("bw_SJr requires rpy2 which is not installed.")
-    rpy2.robjects.numpy2ri.activate()
     stats = importr("stats")
     base = importr("base")
     x_points = base.pmax(genes_log_gmean, base.min(genes_log_gmean_step1))
@@ -51,7 +49,6 @@ def ksmooth(genes_log_gmean, genes_log_gmean_step1, col_to_smooth, bw):
 def robust_scale(x):
     if rpy2 is None:
         raise ImportError("bw_SJr requires rpy2 which is not installed.")
-    rpy2.robjects.numpy2ri.activate()
     stats = importr("stats")
     base = importr("base")
     return (x - np.median(x)) / (
@@ -62,7 +59,6 @@ def robust_scale(x):
 def robust_scale_binned_r(y, x, breaks):
     if rpy2 is None:
         raise ImportError("bw_SJr requires rpy2 which is not installed.")
-    rpy2.robjects.numpy2ri.activate()
     stats = importr("stats")
     base = importr("base")
     bins = base.cut(x=x, breaks=breaks, ordered_result=True)
@@ -79,7 +75,7 @@ def robust_scale_binned_r(y, x, breaks):
     ##score[o] = tmp["x"]
     order = df["bins"].argsort()
     tmp = tmp.loc[order]  # sort_values(by=["bins"])
-    score = tmp["x"]
+    score = tmp["x"].values
     return score
 
 
