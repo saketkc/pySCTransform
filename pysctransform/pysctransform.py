@@ -437,8 +437,10 @@ def get_residuals(
         residuals = pearson_residual(umi, mu, theta)
     elif residual_type == "deviance":
         residuals = deviance_residual(umi, mu, theta)
-
     if res_clip_range == "default":
+        res_clip_range = npy.sqrt(umi.shape[1])
+        residuals = npy.clip(residuals, a_min=-res_clip_range, a_max=res_clip_range)
+    if res_clip_range == "seurat":
         res_clip_range = npy.sqrt(umi.shape[1] / 30)
         residuals = npy.clip(residuals, a_min=-res_clip_range, a_max=res_clip_range)
     return residuals
@@ -621,13 +623,6 @@ def vst(
 
         model_parameters.loc[poisson_genes, "theta"] = npy.inf
 
-    if theta_regularization == "theta":
-        model_parameters["od_factor"] = npy.log10(model_parameters["theta"])
-    else:
-        model_parameters["od_factor"] = npy.log10(
-            1 + npy.power(10, genes_log10_gmean_step1) / model_parameters["theta"]
-        )
-
     end = time.time()
     step1_time = npy.ceil(end - start)
     if verbosity:
@@ -640,7 +635,6 @@ def vst(
     if verbosity:
         print("Running Step2")
     start = time.time()
-    model_parameters_to_return = model_parameters.copy()
     genes_log10_gmean_step1_to_return = genes_log10_gmean_step1.copy()
     genes_log10_amean_step1_to_return = genes_log10_amean_step1.copy()
     outliers_df = pd.DataFrame(index=genes_step1)
@@ -650,6 +644,14 @@ def vst(
             model_parameters[col].values, genes_log10_gmean_step1
         )
         outliers_df[col] = col_outliers
+    if theta_regularization == "theta":
+        model_parameters["od_factor"] = npy.log10(model_parameters["theta"])
+    else:
+        model_parameters["od_factor"] = npy.log10(
+            1 + npy.power(10, genes_log10_gmean_step1) / model_parameters["theta"]
+        )
+
+    model_parameters_to_return = model_parameters.copy()
     non_outliers = outliers_df.sum(1) == 0
     outliers = outliers_df.sum(1) > 0
     if verbosity:
