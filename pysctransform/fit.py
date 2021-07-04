@@ -177,4 +177,3 @@ def theta_lbfgs(y, mu, maxoverdispersion=1e5):
         nll, init_theta, bounds=[(1 / maxoverdispersion, None)], method="L-BFGS-B"
     )
     return theta.x[0]
-

@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+
 try:
     import rpy2
 except ImportError:
@@ -11,6 +12,7 @@ if rpy2:
     from rpy2.robjects import r
     from rpy2.robjects.conversion import localconverter
     from rpy2.robjects.packages import importr
+
     rpy2.robjects.numpy2ri.activate()
     stats = importr("stats")
     base = importr("base")

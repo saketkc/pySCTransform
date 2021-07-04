@@ -148,7 +148,12 @@ def _process_y(y):
 
 
 def get_model_params_pergene(
-    gene_umi, model_matrix, method="theta_ml", offset_intercept = None, cell_umi=None, fix_slope = False
+    gene_umi,
+    model_matrix,
+    method="theta_ml",
+    offset_intercept=None,
+    cell_umi=None,
+    fix_slope=False,
 ):  # latent_var, cell_attr):
     gene_umi = _process_y(gene_umi)
     if method == "sm_nb":
@@ -166,7 +171,7 @@ def get_model_params_pergene(
             params["theta"] = npy.nan
             params["Intercept"] = offset_intercept
             params["log10_umi"] = npy.log(10)
-            mu = npy.exp(offset_intercept + npy.log(10)*cell_umi)
+            mu = npy.exp(offset_intercept + npy.log(10) * cell_umi)
             assert len(gene_umi) == len(mu)
             theta = theta_ml(y=gene_umi, mu=mu)
         else:
@@ -200,19 +205,25 @@ def get_model_params_pergene_glmgp(gene_umi, coldata, design="~ log10_umi"):
     params = fit_glmgp(y=gene_umi, coldata=coldata, design=design)
     return params
 
+
 def get_model_params_pergene_glmgp_offset(gene_umi, coldata, log_umi, design="~ 1"):
     gene_umi = gene_umi.todense()
-    params = fit_glmgp_offset(y=gene_umi, coldata=coldata, design=design, log_umi=log_umi)
+    params = fit_glmgp_offset(
+        y=gene_umi, coldata=coldata, design=design, log_umi=log_umi
+    )
     return params
 
 
-def get_model_params_allgene_glmgp(umi, coldata, bin_size=500, threads=2, use_offset=False, verbosity=0):
+def get_model_params_allgene_glmgp(
+    umi, coldata, bin_size=500, threads=2, use_offset=False, verbosity=0
+):
 
     results = []
-    log_umi = npy.log(npy.ravel(umi.sum(0) ))
+    log_umi = npy.log(npy.ravel(umi.sum(0)))
     if use_offset:
         results = Parallel(n_jobs=threads, backend="multiprocessing", batch_size=500)(
-            delayed(get_model_params_pergene_glmgp_offset)(row, coldata, log_umi) for row in umi
+            delayed(get_model_params_pergene_glmgp_offset)(row, coldata, log_umi)
+            for row in umi
         )
     else:
         results = Parallel(n_jobs=threads, backend="multiprocessing", batch_size=500)(
@@ -223,7 +234,9 @@ def get_model_params_allgene_glmgp(umi, coldata, bin_size=500, threads=2, use_of
     return params_df
 
 
-def get_model_params_allgene(umi, model_matrix, method="fit", threads=12, fix_slope=False, verbosity=0):
+def get_model_params_allgene(
+    umi, model_matrix, method="fit", threads=12, fix_slope=False, verbosity=0
+):
 
     results = []
     if fix_slope:
@@ -233,8 +246,8 @@ def get_model_params_allgene(umi, model_matrix, method="fit", threads=12, fix_sl
         offset_intercept = npy.log(gene_mean) - npy.log(mean_cell_sum)
         offset_intercept = npy.ravel(offset_intercept)
     else:
-        offset_intercept = [npy.nan]*umi.shape[0]
-        cell_umi = [npy.nan]*umi.shape[0]
+        offset_intercept = [npy.nan] * umi.shape[0]
+        cell_umi = [npy.nan] * umi.shape[0]
     with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
         # TODO this should remain sparse
         # feed_list = [
@@ -242,7 +255,15 @@ def get_model_params_allgene(umi, model_matrix, method="fit", threads=12, fix_sl
         #    for index, row in umi.iterrows()
         # ]
         feed_list = [
-            (row.todense().reshape((-1, 1)), model_matrix, method, offset_intercept[i], cell_umi, fix_slope) for i, row in enumerate(umi)
+            (
+                row.todense().reshape((-1, 1)),
+                model_matrix,
+                method,
+                offset_intercept[i],
+                cell_umi,
+                fix_slope,
+            )
+            for i, row in enumerate(umi)
         ]
 
         if verbosity:
@@ -495,7 +516,9 @@ def vst(
         genes_log10_gmean_step1 = npy.log10(
             row_gmean_sparse(umi[genes_step1, cells_step1], gmean_eps=gmean_eps)
         )
-        genes_log10_amean_step1 = npy.log10(npy.ravel(umi[genes_step1, cells_step1].mean(1)))
+        genes_log10_amean_step1 = npy.log10(
+            npy.ravel(umi[genes_step1, cells_step1].mean(1))
+        )
         umi_step1 = umi[:, cells_step1_index]
     else:
         cells_step1_index = npy.arange(len(cell_names), dtype=int)
@@ -553,7 +576,9 @@ def vst(
         model_parameters = get_model_params_allgene_glmgp(umi_step1, data_step1)
         model_parameters.index = genes_step1
     elif method == "fix-slope":
-        model_parameters = get_model_params_allgene_glmgp(umi_step1, data_step1, use_offset=True)
+        model_parameters = get_model_params_allgene_glmgp(
+            umi_step1, data_step1, use_offset=True
+        )
         model_parameters.index = genes_step1
     else:
         model_parameters = get_model_params_allgene(
@@ -602,7 +627,9 @@ def vst(
                 model_parameters[col].values, genes_log10_gmean_step1
             )
         else:
-            col_outliers = is_outlier(model_parameters[col].values, genes_log10_gmean_step1)
+            col_outliers = is_outlier(
+                model_parameters[col].values, genes_log10_gmean_step1
+            )
         outliers_df[col] = col_outliers
     if theta_regularization == "theta":
         model_parameters["od_factor"] = npy.log10(model_parameters["theta"])
@@ -680,3 +707,64 @@ def vst(
         "step2_time": step2_time,
         "step3_time": step3_time,
     }
+
+
+def SCTransform(
+    adata,
+    vst_flavor=None,
+    method="theta_ml",
+    res_clip_range="seurat",
+    n_cells=2000,
+    n_genes=2000,
+    var_features_n=3000,
+    **kwargs
+):
+    """Wrapper around vst
+
+    Parameters
+    ----------
+    adata: Anndata object
+
+    vst_flavor: string
+                if set to 'v2' fixes slope and excludes non-poisson genes
+                Requires rpy2 and glmGamPoi to be installed. This will
+                automatically set method='fix-slope'
+
+    res_clip_range: string or list
+                    options: 1)"seurat": Clips residuals to -sqrt(ncells/30), sqrt(ncells/30)
+                             2)"default": Clips residuals to -sqrt(ncells/), sqrt(ncells)
+
+
+
+    """
+    import scanpy as sc
+
+    adata = adata.copy()
+    exclude_poisson = False
+    method = "theta_ml"
+    if vst_flavor == "v2":
+        exclude_poisson = True
+        method = "fix-slope"
+    vst_out = vst(
+        adata.X.T,
+        gene_names=adata.var_names.tolist(),
+        cell_names=adata.obs_names.tolist(),
+        method=method,
+        n_cells=n_cells,
+        n_genes=n_genes,
+    )
+    gene_attr = vst_out["gene_attr"]
+    gene_attr = gene_attr.sort_values(by=["residual_variance"], ascending=False)
+    highly_variable = gene_attr.index[:var_features_n].tolist()
+    if res_clip_range == "seurat":
+        clip_range = [-npy.sqrt(adata.shape[0] / 30), npy.sqrt(adata.shape[0] / 30)]
+    elif res_clip_range == "default":
+        clip_range = [-npy.sqrt(adata.shape[0] / 30), npy.sqrt(adata.shape[0] / 30)]
+    else:
+        if not isinstance(res_clip_range, list):
+            raise RuntimeError("res_clip_range should be a list or string")
+        clip_range = res_clip_range
+    residuals = vst_out["residuals"].T[highly_variable]
+    residuals = npy.clip(residuals, clip_range[0], clip_range[1])
+    adata.obsm["pearson_residuals"] = residuals
+    return adata
