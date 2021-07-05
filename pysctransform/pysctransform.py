@@ -316,27 +316,11 @@ def get_regularized_params(
     poisson_genes=None,
 ):
     model_parameters = model_parameters.copy()
-    # genes_log10_gmean_step1 = genes_log10_gmean_step1[
-    #    npy.isfinite(model_parameters.theta)
-    # ]
-    # genes_step1 = genes_step1[npy.isfinite(model_parameters.theta)]
 
     model_parameters_fit = pd.DataFrame(
         npy.nan, index=genes, columns=model_parameters.columns
     )
 
-    """
-    exog_predict = genes_log10_gmean#.values
-    for column in model_parameters.columns:
-        if column == "theta":
-            continue
-        endog = model_parameters.loc[genes_step1, column].values
-        exog_fit = genes_log10_gmean_step1#.values
-        bw = bwSJ(genes_log10_gmean_step1, bw_adjust=bw_adjust)#.values)
-        reg = KernelReg(endog=endog, exog=exog_fit, var_type="c", reg_type="ll", bw=bw)
-        model_parameters_fit[column] = reg.fit(exog_predict)[0]
-
-    """
     x_points_df = pd.DataFrame({"gene_log10_gmean": genes_log10_gmean})
     x_points_df["min_gene_log10_gmean_step1"] = genes_log10_gmean_step1.min()
 
@@ -372,6 +356,16 @@ def get_regularized_params(
         # relace theta by inf
         if poisson_genes is not None:
             model_parameters_fit.loc[poisson_genes, "theta"] = npy.inf
+            model_parameters_fit.loc[poisson_genes, "log_umi"] = npy.log(10)
+            gene_mean = pd.Series(npy.ravel(umi.mean(1)), index=genes)
+            print(gene_mean[1:5])
+            mean_cell_sum = npy.mean(npy.ravel(umi.sum(0)))
+            print(mean_cell_sum)
+            print("pois gene: {}".format(len(poisson_genes)))
+            print("common: {}".format(len(set(genes).intersection(poisson_genes))))
+            model_parameters_fit.loc[poisson_genes, "Intercept"] = npy.log(
+                gene_mean[poisson_genes]
+            ) - npy.log(mean_cell_sum)
 
     return model_parameters_fit
 
@@ -597,14 +591,18 @@ def vst(
 
     poisson_genes = None
     if exclude_poisson:
-        poisson_genes = gene_attr[
+        poisson_genes1 = gene_attr[
             gene_attr["gene_amean"] >= gene_attr["gene_variance"]
         ].index.tolist()
+        poisson_genes2 = gene_attr[gene_attr["gene_amean"] <= 1e-3].index.tolist()
+        poisson_genes = set(poisson_genes1).union(poisson_genes2)
+
+        poisson_genes_step1 = set(poisson_genes).intersection(genes_step1)
         if verbosity:
             print("Found ", len(poisson_genes), " poisson genes")
             print("Setting there estimates to Inf")
-
-        model_parameters.loc[poisson_genes, "theta"] = npy.inf
+        if poisson_genes_step1:
+            model_parameters.loc[poisson_genes_step1, "theta"] = npy.inf
 
     end = time.time()
     step1_time = npy.ceil(end - start)
@@ -752,6 +750,7 @@ def SCTransform(
         method=method,
         n_cells=n_cells,
         n_genes=n_genes,
+        exclude_poisson=exclude_poisson,
     )
     gene_attr = vst_out["gene_attr"]
     gene_attr = gene_attr.sort_values(by=["residual_variance"], ascending=False)
@@ -759,7 +758,7 @@ def SCTransform(
     if res_clip_range == "seurat":
         clip_range = [-npy.sqrt(adata.shape[0] / 30), npy.sqrt(adata.shape[0] / 30)]
     elif res_clip_range == "default":
-        clip_range = [-npy.sqrt(adata.shape[0] / 30), npy.sqrt(adata.shape[0] / 30)]
+        clip_range = [-npy.sqrt(adata.shape[0]), npy.sqrt(adata.shape[0])]
     else:
         if not isinstance(res_clip_range, list):
             raise RuntimeError("res_clip_range should be a list or string")
