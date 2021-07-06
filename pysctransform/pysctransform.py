@@ -846,6 +846,8 @@ def SCTransform(
     method = "theta_ml"
     if vst_flavor == "v2":
         method = "fix-slope"
+        exclude_poisson = True
+        n_cells = 2000
     vst_out = vst(
         adata.X.T,
         gene_names=adata.var_names.tolist(),
