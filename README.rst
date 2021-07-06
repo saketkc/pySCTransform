@@ -42,6 +42,8 @@ Quickstart
 .. code-block:: python
 
     import scanpy as sc
+    from pysctransform import SCTransform
+   
     pbmc3k = sc.read_h5ad("./pbmc3k.h5ad")
 
     # Get pearson residuals for 3K highly variable genes
@@ -63,6 +65,8 @@ Quickstart
 .. code-block:: python
 
     # Perform variance stabilization using 'v2' regularization
+    from pysctransform import vst
+    from pysctransform.plotting import plot_residual_var
     vst_out_3k = vst(umi = pbmc3k.X.T,
                      gene_names=pbmc3k.var_names.tolist(),
                      cell_names=pbmc3k.obs_names.tolist(),
