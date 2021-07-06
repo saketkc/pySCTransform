@@ -22,7 +22,7 @@ We recommend using `conda <https://docs.conda.io/en/latest/>`_ for installing py
 
 .. code-block:: bash
 
-    conda create -n pysct louvain scanpy jupyterlab
+    conda create -n pysct louvain scanpy
     conda activate pysct
     pip install git+https://github.com/saketkc/pysctransform.git@glmgp
 
@@ -30,7 +30,7 @@ If you would like to use `glmGamPoi <https://bioconductor.org/packages/release/b
 
 .. code-block:: bash
 
-    conda create -n pysct louvain scanpy jupyterlab rpy2 bioconductor-glmgampoi
+    conda create -n pysct louvain scanpy rpy2 bioconductor-glmgampoi
     conda activate pysct
     pip install git+https://github.com/saketkc/pysctransform.git
 
