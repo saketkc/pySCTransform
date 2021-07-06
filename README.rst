@@ -60,3 +60,18 @@ Quickstart
 .. image:: https://raw.githubusercontent.com/saketkc/pySCTransform/develop/notebooks/output_images/pbmc3k_pysct.png
     :target: https://github.com/saketkc/pySCTransform/blob/develop/notebooks/demo.ipynb 
   
+.. code-block:: python
+
+    # Perform variance stabilization using 'v2' regularization
+    vst_out_3k = vst(umi = pbmc3k.X.T,
+                     gene_names=pbmc3k.var_names.tolist(),
+                     cell_names=pbmc3k.obs_names.tolist(),
+                     method="fix-slope",
+                     exclude_poisson=True
+                    )
+    plot_residual_var(vst_out_3k)
+    
+    
+.. image:: https://raw.githubusercontent.com/saketkc/pySCTransform/develop/notebooks/output_images/pysct_glmgp_residvar.png
+    :target: https://github.com/saketkc/pySCTransform/blob/develop/notebooks/demo.ipynb 
+
