@@ -395,6 +395,25 @@ def get_residuals(
     res_clip_range="default",
 ):
 
+    """Get residuals for a fit model.
+
+    Parameters
+    ----------
+
+    model_matrix: matrix
+                  GLM model matrix
+    model_parameters_fit: DataFrame
+                          dataframe of model fit parameters
+    res_clip_range: string or list
+                    options: 1)"seurat": Clips residuals to -sqrt(ncells/30), sqrt(ncells/30)
+                             2)"default": Clips residuals to -sqrt(ncells), sqrt(ncells)
+
+    Returns
+    -------
+    residuals: matrix
+               gene x cell matrix of residuals for genes in model_parameters_fit
+    """
+
     subset = npy.asarray(
         model_parameters_fit[model_matrix.design_info.column_names].values
     )
@@ -461,11 +480,34 @@ def vst(
 
     Parameters
     ----------
-    umi: pd.DataFrame
-         pandas DataFrame (dense)
-         with genes as rows and cells as columns
+    umi: matrix
+         Sparse or dense matrix with genes as rows and cells as columns
          (same as Seurat)
+    gene_names: list
+                List of gene names for umi matrix
+    cell_names: list
+                List of cell names for umi matrix
+    n_cells: int
+             Number of cells to use for estimating parameters in Step1: default is 5000
+    n_genes: int
+             Number of genes to use for estimating parameters in Step1; default is 2000
+    threads: int
+             Number of threads to use (caveat: higher threads require higher memory)
+    theta_given: int
+                 Used only when method == "offset", for fixing the value of inverse overdispersion parameter
+                 following Lause et al. (2021) offset model; default is 10
+    theta_regularization: string
+                         "od_factor" or "theta": parameter to run smoothing operation on for theta,
+                         od_factor = 1 +mu/theta; default is od_factor
 
+    residual_type: string
+                  "pearson" or "deviance" residuals; default is "pearson"
+    exclude_poisson: bool
+                     To exclude poisson genes from regularization and set final parameters based on offset model; default is False
+    fix_slope: bool
+               Whether to fix the slope; default is False
+    verbosity: bool
+               Print verbose messages
     """
     umi = umi.copy()
     if n_cells is None:
@@ -712,7 +754,7 @@ def SCTransform(
     vst_flavor=None,
     method="theta_ml",
     res_clip_range="seurat",
-    n_cells=2000,
+    n_cells=5000,
     n_genes=2000,
     var_features_n=3000,
     **kwargs
@@ -730,7 +772,7 @@ def SCTransform(
 
     res_clip_range: string or list
                     options: 1)"seurat": Clips residuals to -sqrt(ncells/30), sqrt(ncells/30)
-                             2)"default": Clips residuals to -sqrt(ncells/), sqrt(ncells)
+                             2)"default": Clips residuals to -sqrt(ncells), sqrt(ncells)
 
 
 
