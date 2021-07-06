@@ -56,6 +56,7 @@ Quickstart
     sc.tl.umap(pbmc3k, min_dist=0.3)
     sc.tl.louvain(pbmc3k)
     sc.pl.umap(pbmc3k, color=["louvain"], legend_loc="on data", show=True)
-
-   
+    
+.. image:: https://raw.githubusercontent.com/saketkc/pySCTransform/develop/notebooks/output_images/pbmc3k_pysct.png
+    :target: https://github.com/saketkc/pySCTransform/blob/develop/notebooks/demo.ipynb 
   
