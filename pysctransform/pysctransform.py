@@ -14,22 +14,20 @@ import logging
 
 import numpy as npy
 import pandas as pd
-import statsmodels.api as sm
 import statsmodels.discrete.discrete_model as dm
 from joblib import Parallel
 from joblib import delayed
 from patsy import dmatrix
 from scipy import stats
 from scipy.sparse import csr_matrix
-from statsmodels.api import GLM
 from statsmodels.nonparametric.kernel_regression import KernelReg
 from tqdm import tqdm
+from sklearn.utils.sparsefuncs import mean_variance_axis
 
 logging.captureWarnings(True)
 
 
 from .fit import alpha_lbfgs
-from .fit import estimate_mu_glm
 from .fit import estimate_mu_poisson
 from .fit import theta_lbfgs
 from .fit import theta_ml
@@ -58,9 +56,11 @@ def is_outlier_naive(x, snr_threshold=25):
 
 
 def sparse_var(X, axis=None):
-    X2 = X.copy()
-    X2.data **= 2
-    return X2.mean(axis) - npy.square(X2.mean(axis))
+    # X2 = X.copy()
+    # X2.data **= 2
+    # return X2.mean(axis) - npy.square(X2.mean(axis))
+    mean, var = mean_variance_axis(X, axis)
+    return var
 
 
 def bwSJ(genes_log10_gmean_step1, bw_adjust=3):
@@ -130,10 +130,6 @@ def row_gmean(umi, gmean_eps=1):
 
 def row_gmean_sparse(umi, gmean_eps=1):
 
-    # print(umi.shape)
-    # gmean = npy.apply_along_axis(func1d=row_gmean, axis=1, arr=umi, gmean_eps=gmean_eps)
-    # gmean = npy.exp(npy.log(umi + gmean_eps).mean(1)) - gmean_eps
-    # for row in umi:
     gmean = npy.asarray(npy.array([row_gmean(x.todense(), gmean_eps)[0] for x in umi]))
     gmean = npy.squeeze(gmean)
     return gmean
@@ -166,7 +162,6 @@ def get_model_params_pergene(
         params["theta"] = theta
     elif method == "theta_ml":
         if fix_slope:
-            gene_mean = npy.mean(gene_umi)
             params = pd.DataFrame(index=[0])
             params["theta"] = npy.nan
             params["Intercept"] = offset_intercept
@@ -215,7 +210,7 @@ def get_model_params_pergene_glmgp_offset(gene_umi, coldata, log_umi, design="~ 
 
 
 def get_model_params_allgene_glmgp(
-    umi, coldata, bin_size=500, threads=2, use_offset=False, verbosity=0
+    umi, coldata, bin_size=500, threads=4, use_offset=False, verbosity=0
 ):
 
     results = []
@@ -235,7 +230,7 @@ def get_model_params_allgene_glmgp(
 
 
 def get_model_params_allgene(
-    umi, model_matrix, method="fit", threads=12, fix_slope=False, verbosity=0
+    umi, model_matrix, method="fit", threads=4, fix_slope=False, verbosity=0
 ):
 
     results = []
@@ -250,10 +245,6 @@ def get_model_params_allgene(
         cell_umi = [npy.nan] * umi.shape[0]
     with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
         # TODO this should remain sparse
-        # feed_list = [
-        #    (row.values.reshape((-1, 1)), model_matrix, method)
-        #    for index, row in umi.iterrows()
-        # ]
         feed_list = [
             (
                 row.todense().reshape((-1, 1)),
@@ -344,9 +335,8 @@ def get_regularized_params(
         params = ksmooth(genes_log10_gmean, genes_log10_gmean_step1, endog, bw[0])
         index = model_parameters_fit.index.values[params["order"] - 1]
         model_parameters_fit.loc[index, column] = params["smoothed"]
-
     if theta_regularization == "theta":
-        theta = npy.power(10, (model_parameters["od_factor"]))
+        theta = npy.power(10, (model_parameters_fit["od_factor"]))
     else:
         theta = npy.power(10, genes_log10_gmean) / (
             npy.power(10, model_parameters_fit["od_factor"]) - 1
@@ -355,14 +345,18 @@ def get_regularized_params(
     if exclude_poisson:
         # relace theta by inf
         if poisson_genes is not None:
+            print("len poisson genes", len(poisson_genes))
             model_parameters_fit.loc[poisson_genes, "theta"] = npy.inf
-            model_parameters_fit.loc[poisson_genes, "log_umi"] = npy.log(10)
+            # model_parameters_fit["is_poisson"]= False
+            # model_parameters_fit.loc[poisson_genes, "is_poisson"] = True
+            if theta_regularization == "theta":
+                model_parameters_fit.loc[poisson_genes, "od_factor"] = npy.inf
+            else:
+                model_parameters_fit.loc[poisson_genes, "od_factor"] = 0
+
+            model_parameters_fit.loc[poisson_genes, "log10_umi"] = npy.log(10)
             gene_mean = pd.Series(npy.ravel(umi.mean(1)), index=genes)
-            print(gene_mean[1:5])
             mean_cell_sum = npy.mean(npy.ravel(umi.sum(0)))
-            print(mean_cell_sum)
-            print("pois gene: {}".format(len(poisson_genes)))
-            print("common: {}".format(len(set(genes).intersection(poisson_genes))))
             model_parameters_fit.loc[poisson_genes, "Intercept"] = npy.log(
                 gene_mean[poisson_genes]
             ) - npy.log(mean_cell_sum)
@@ -467,16 +461,19 @@ def vst(
     gmean_eps=1,
     min_cells=5,
     n_genes=2000,
-    threads=24,
+    threads=4,
     method="theta_ml",
     theta_given=10,
     theta_regularization="od_factor",
     residual_type="pearson",
+    correct_counts=False,
     exclude_poisson=False,
     fix_slope=False,
     verbosity=0,
 ):
-    """
+    """Perform variance stabilizing transformation.
+
+    Residuals are currently stored for all genes (might be memory intensive for larger datasets).
 
     Parameters
     ----------
@@ -502,6 +499,8 @@ def vst(
 
     residual_type: string
                   "pearson" or "deviance" residuals; default is "pearson"
+    correct_counts: bool
+                    Whether to correct counts by reversing the GLM with median values
     exclude_poisson: bool
                      To exclude poisson genes from regularization and set final parameters based on offset model; default is False
     fix_slope: bool
@@ -515,6 +514,7 @@ def vst(
     if n_genes is None:
         n_genes = umi.shape[0]
     n_cells = min(n_cells, umi.shape[1])
+    n_genes = min(n_genes, umi.shape[0])
     if gene_names is None:
         if not isinstance(umi, pd.DataFrame):
             raise RuntimeError(
@@ -550,10 +550,19 @@ def vst(
         genes_cell_count_step1 = (umi[:, cells_step1_index] > 0).sum(1)
         genes_step1 = genes[genes_cell_count_step1 >= min_cells]
         genes_log10_gmean_step1 = npy.log10(
-            row_gmean_sparse(umi[genes_step1, cells_step1], gmean_eps=gmean_eps)
+            row_gmean_sparse(
+                umi[
+                    genes_step1,
+                ],
+                gmean_eps=gmean_eps,
+            )
         )
         genes_log10_amean_step1 = npy.log10(
-            npy.ravel(umi[genes_step1, cells_step1].mean(1))
+            npy.ravel(
+                umi[
+                    genes_step1,
+                ].mean(1)
+            )
         )
         umi_step1 = umi[:, cells_step1_index]
     else:
@@ -601,13 +610,12 @@ def vst(
         )
 
     if method == "offset":
-        gene_mean = umi.mean(1)
+        gene_mean = npy.ravel(umi.mean(1))
         mean_cell_sum = npy.mean(umi.sum(0))
         model_parameters = pd.DataFrame(index=genes)
         model_parameters["theta"] = theta_given
         model_parameters["Intercept"] = npy.log(gene_mean) - npy.log(mean_cell_sum)
         model_parameters["log10_umi"] = [npy.log(10)] * len(genes)
-
     elif method == "glmgp":
         model_parameters = get_model_params_allgene_glmgp(umi_step1, data_step1)
         model_parameters.index = genes_step1
@@ -616,31 +624,35 @@ def vst(
             umi_step1, data_step1, use_offset=True
         )
         model_parameters.index = genes_step1
-    else:
+    elif method in ["theta_ml", "theta_lbfgs", "alpha_lbfgs"]:
         model_parameters = get_model_params_allgene(
             umi_step1, model_matrix, method, threads, fix_slope
-        )  # latent_var, cell_attr)
+        )
         model_parameters.index = genes_step1
-
+    else:
+        raise RuntimeError("Unknown method {}".format(method))
     gene_attr = pd.DataFrame(index=genes)
-    gene_attr["gene_amean"] = umi.mean(1)
+    gene_attr["gene_amean"] = npy.power(10, genes_log10_amean)
     gene_attr["gene_gmean"] = npy.power(10, genes_log10_gmean)
     gene_attr["gene_detectation_rate"] = (
         npy.squeeze(npy.asarray((umi > 0).sum(1))) / umi.shape[1]
     )
     gene_attr["theta"] = model_parameters["theta"]
-    gene_attr["gene_variance"] = sparse_var(umi, 1)  # umi.var(1)
+    gene_attr["gene_variance"] = sparse_var(umi, 1)
 
     poisson_genes = None
     if exclude_poisson:
-        poisson_genes1 = gene_attr[
+        poisson_genes1 = gene_attr.loc[
             gene_attr["gene_amean"] >= gene_attr["gene_variance"]
         ].index.tolist()
-        poisson_genes2 = gene_attr[gene_attr["gene_amean"] <= 1e-3].index.tolist()
+        poisson_genes2 = gene_attr.loc[gene_attr["gene_amean"] <= 1e-3].index.tolist()
         poisson_genes = set(poisson_genes1).union(poisson_genes2)
 
         poisson_genes_step1 = set(poisson_genes).intersection(genes_step1)
+
         if verbosity:
+            print("Found ", len(poisson_genes1), " genes with var <= mean")
+            print("Found ", len(poisson_genes2), " genes with mean < 1e-3")
             print("Found ", len(poisson_genes), " poisson genes")
             print("Setting there estimates to Inf")
         if poisson_genes_step1:
@@ -652,9 +664,6 @@ def vst(
         print("Step1 done. Took {} seconds.".format(npy.ceil(end - start)))
     # Step 2: Do regularization
 
-    # Remove high disp genes
-    # Not optimal
-    # TODO: Fix
     if verbosity:
         print("Running Step2")
     start = time.time()
@@ -671,6 +680,9 @@ def vst(
                 model_parameters[col].values, genes_log10_gmean_step1
             )
         outliers_df[col] = col_outliers
+
+    if exclude_poisson:
+        outliers_df.loc[poisson_genes_step1, "theta"] = True
     if theta_regularization == "theta":
         model_parameters["od_factor"] = npy.log10(model_parameters["theta"])
     else:
@@ -682,15 +694,20 @@ def vst(
     non_outliers = outliers_df.sum(1) == 0
     outliers = outliers_df.sum(1) > 0
     if verbosity:
-        print("outliers: {}".format(npy.sum(outliers)))
+        print("Total outliers: {}".format(npy.sum(outliers)))
 
     genes_non_outliers = genes_step1[non_outliers]
     genes_step1 = genes_step1[non_outliers]
     genes_log10_gmean_step1 = genes_log10_gmean_step1[non_outliers]
-    model_parameters = model_parameters.loc[genes_non_outliers]
     if method == "offset":
         model_parameters_fit = model_parameters.copy()
     else:
+        model_parameters = model_parameters.loc[genes_non_outliers]
+        if exclude_poisson:
+            non_poisson_genes = set(model_parameters.index.tolist()).difference(
+                poisson_genes
+            )
+            model_parameters = model_parameters.loc[non_poisson_genes]
         model_parameters_fit = get_regularized_params(
             model_parameters,
             genes,
@@ -723,13 +740,15 @@ def vst(
     if verbosity:
         print("Step3 done. Took {} seconds.".format(npy.ceil(end - start)))
 
-    gene_attr["theta_regularized"] = model_parameters["theta"]
+    gene_attr["theta_regularized"] = model_parameters_fit["theta"]
     gene_attr["residual_mean"] = residuals.mean(1)
     gene_attr["residual_variance"] = residuals.var(1)
 
-    corrected_counts = correct(
-        residuals, cell_attr, latent_var, model_parameters_fit, umi
-    )
+    corrected_counts = None
+    if correct_counts:
+        corrected_counts = correct(
+            residuals, cell_attr, latent_var, model_parameters_fit, umi
+        )
 
     return {
         "residuals": residuals,
@@ -746,16 +765,56 @@ def vst(
         "step1_time": step1_time,
         "step2_time": step2_time,
         "step3_time": step3_time,
+        "total_cells": len(cell_names),
     }
+
+
+def get_hvg_residuals(vst_out, var_features_n=3000, res_clip_range="seurat"):
+    """Get residuals for highly variable genes (hvg)
+    Get residuals for n highly variable genes (sorted by decreasing residual variance)
+
+    Parameters
+    -----------
+
+    vst_out: dict
+             output of vst()
+    res_clip_range: string or list
+                    options: 1)"seurat": Clips residuals to -sqrt(ncells/30), sqrt(ncells/30)
+                             2)"default": Clips residuals to -sqrt(ncells), sqrt(ncells)
+    var_features_n: int
+                    Number of variable features to select (for calculating a subset of pearson residuals)
+
+    Returns
+    -------
+    hvg_residuals: matrix
+                   A gene x cell matrix of hvg residuals
+
+    """
+
+    gene_attr = vst_out["gene_attr"]
+    total_cells = vst_out["total_cells"]
+    gene_attr = gene_attr.sort_values(by=["residual_variance"], ascending=False)
+    highly_variable = gene_attr.index[:var_features_n].tolist()
+    if res_clip_range == "seurat":
+        clip_range = [-npy.sqrt(total_cells / 30), npy.sqrt(total_cells / 30)]
+    elif res_clip_range == "default":
+        clip_range = [-npy.sqrt(total_cells), npy.sqrt(total_cells)]
+    else:
+        if not isinstance(res_clip_range, list):
+            raise RuntimeError("res_clip_range should be a list or string")
+        clip_range = res_clip_range
+    hvg_residuals = vst_out["residuals"].T[highly_variable]
+    hvg_residuals = npy.clip(hvg_residuals, clip_range[0], clip_range[1])
+    return hvg_residuals
 
 
 def SCTransform(
     adata,
     vst_flavor=None,
     method="theta_ml",
-    res_clip_range="seurat",
     n_cells=5000,
     n_genes=2000,
+    res_clip_range="seurat",
     var_features_n=3000,
     **kwargs
 ):
@@ -770,20 +829,22 @@ def SCTransform(
                 Requires rpy2 and glmGamPoi to be installed. This will
                 automatically set method='fix-slope'
 
+    n_cells: int
+             Number of cells to use for estimating parameters in Step1: default is 5000
+    n_genes: int
+             Number of genes to use for estimating parameters in Step1; default is 2000
     res_clip_range: string or list
                     options: 1)"seurat": Clips residuals to -sqrt(ncells/30), sqrt(ncells/30)
                              2)"default": Clips residuals to -sqrt(ncells), sqrt(ncells)
-
+    var_features_n: int
+                    Number of variable features to select (for calculating a subset of pearson residuals)
 
 
     """
-    import scanpy as sc
-
     adata = adata.copy()
     exclude_poisson = False
     method = "theta_ml"
     if vst_flavor == "v2":
-        exclude_poisson = True
         method = "fix-slope"
     vst_out = vst(
         adata.X.T,
@@ -794,18 +855,5 @@ def SCTransform(
         n_genes=n_genes,
         exclude_poisson=exclude_poisson,
     )
-    gene_attr = vst_out["gene_attr"]
-    gene_attr = gene_attr.sort_values(by=["residual_variance"], ascending=False)
-    highly_variable = gene_attr.index[:var_features_n].tolist()
-    if res_clip_range == "seurat":
-        clip_range = [-npy.sqrt(adata.shape[0] / 30), npy.sqrt(adata.shape[0] / 30)]
-    elif res_clip_range == "default":
-        clip_range = [-npy.sqrt(adata.shape[0]), npy.sqrt(adata.shape[0])]
-    else:
-        if not isinstance(res_clip_range, list):
-            raise RuntimeError("res_clip_range should be a list or string")
-        clip_range = res_clip_range
-    residuals = vst_out["residuals"].T[highly_variable]
-    residuals = npy.clip(residuals, clip_range[0], clip_range[1])
-    adata.obsm["pearson_residuals"] = residuals
-    return adata
+    residuals = get_hvg_residuals(vst_out, var_features_n, res_clip_range)
+    return residuals
