@@ -79,3 +79,9 @@ Quickstart
 .. image:: https://raw.githubusercontent.com/saketkc/pySCTransform/develop/notebooks/output_images/pysct_glmgp_residvar.png
     :target: https://github.com/saketkc/pySCTransform/blob/develop/notebooks/demo.ipynb 
 
+
+=====
+Notes
+=====
+
+* `batch_var` is currently not supported
