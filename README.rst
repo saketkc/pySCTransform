@@ -84,4 +84,4 @@ Quickstart
 Notes
 =====
 
-* `batch_var` is currently not supported
+* ``batch_var`` is currently not supported
