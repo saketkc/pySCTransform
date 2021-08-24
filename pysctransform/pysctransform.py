@@ -305,6 +305,7 @@ def get_regularized_params(
     theta_regularization="od_factor",
     exclude_poisson=False,
     poisson_genes=None,
+    useR=False,
 ):
     model_parameters = model_parameters.copy()
 
@@ -326,15 +327,19 @@ def get_regularized_params(
             continue
         endog = model_parameters.loc[genes_step1, column].values
         exog_fit = genes_log10_gmean_step1  # .values
-        bw = bwSJ(genes_log10_gmean_step1, bw_adjust=bw_adjust)  # .values)
-        reg = KernelReg(endog=endog, exog=exog_fit, var_type="c", reg_type="ll", bw=bw)
-        fit = reg.fit(x_points)
-        model_parameters_fit[column] = npy.squeeze(fit[0])
+        if useR:
+            bw = bw_SJr(genes_log10_gmean_step1, bw_adjust=bw_adjust)  # .values)
+            params = ksmooth(genes_log10_gmean, genes_log10_gmean_step1, endog, bw[0])
+            index = model_parameters_fit.index.values[params["order"] - 1]
+            model_parameters_fit.loc[index, column] = params["smoothed"]
+        else:
+            bw = bwSJ(genes_log10_gmean_step1, bw_adjust=bw_adjust)  # .values)
+            reg = KernelReg(
+                endog=endog, exog=exog_fit, var_type="c", reg_type="ll", bw=bw
+            )
+            fit = reg.fit(x_points)
+            model_parameters_fit[column] = npy.squeeze(fit[0])
         # print(bw)
-        bw = bw_SJr(genes_log10_gmean_step1, bw_adjust=bw_adjust)  # .values)
-        params = ksmooth(genes_log10_gmean, genes_log10_gmean_step1, endog, bw[0])
-        index = model_parameters_fit.index.values[params["order"] - 1]
-        model_parameters_fit.loc[index, column] = params["smoothed"]
     if theta_regularization == "theta":
         theta = npy.power(10, (model_parameters_fit["od_factor"]))
     else:
@@ -608,7 +613,7 @@ def vst(
             " + ".join(latent_var) + cross_term + " + ".join(batch_var) + " + 0",
             data_step1,
         )
-
+    useR = False
     if method == "offset":
         gene_mean = npy.ravel(umi.mean(1))
         mean_cell_sum = npy.mean(umi.sum(0))
@@ -619,11 +624,13 @@ def vst(
     elif method == "glmgp":
         model_parameters = get_model_params_allgene_glmgp(umi_step1, data_step1)
         model_parameters.index = genes_step1
+        useR = True
     elif method == "fix-slope":
         model_parameters = get_model_params_allgene_glmgp(
             umi_step1, data_step1, use_offset=True
         )
         model_parameters.index = genes_step1
+        useR = True
     elif method in ["theta_ml", "theta_lbfgs", "alpha_lbfgs"]:
         model_parameters = get_model_params_allgene(
             umi_step1, model_matrix, method, threads, fix_slope
@@ -719,6 +726,7 @@ def vst(
             theta_regularization=theta_regularization,
             exclude_poisson=exclude_poisson,
             poisson_genes=poisson_genes,
+            useR=useR,
         )
     end = time.time()
     step2_time = npy.ceil(end - start)
