@@ -330,7 +330,7 @@ def get_regularized_params(
         if useR:
             bw = bw_SJr(genes_log10_gmean_step1, bw_adjust=bw_adjust)  # .values)
             params = ksmooth(genes_log10_gmean, genes_log10_gmean_step1, endog, bw[0])
-            index = model_parameters_fit.index.values[params["order"] - 1]
+            index = model_parameters_fit.index.values[npy.asarray(params["order"]) - 1]
             model_parameters_fit.loc[index, column] = params["smoothed"]
         else:
             bw = bwSJ(genes_log10_gmean_step1, bw_adjust=bw_adjust)  # .values)
