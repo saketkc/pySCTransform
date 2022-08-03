@@ -2,7 +2,7 @@
 pySCTranscform
 ==============
 
-SCTransform for Python - interfaces with `ScanPy <https://scanpy.readthedocs.io/en/stable/>`_
+SCTransform for Python - interfaces with `Scanpy <https://scanpy.readthedocs.io/en/stable/>`_
 
 =============
 Demo Notebook
