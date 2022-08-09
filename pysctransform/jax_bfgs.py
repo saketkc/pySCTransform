@@ -33,7 +33,7 @@ def fit_nbinom_bfgs_jit(y, mu):
             - N * theta * jnp.log(theta / (theta + mu))
         )
 
-    init_theta = jnp.array([(ybar ** 2) / (jnp.var(y) - ybar)])
+    init_theta = jnp.array([(ybar**2) / (jnp.var(y) - ybar)])
     theta = jax_minimize(
         nll, init_theta, method="BFGS", tol=1e-4, options={"maxiter": 100}
     )
@@ -57,7 +57,7 @@ def fit_nbinom_bfgs_alpha_jit(y, mu):
             - N * 1 / alpha * jnp.log(1 / (1 + alpha * mu))
         )
 
-    init_alpha = jnp.array([(jnp.var(y) - ybar) / (ybar ** 2)])
+    init_alpha = jnp.array([(jnp.var(y) - ybar) / (ybar**2)])
     theta = jax_minimize(
         nll, init_alpha, method="BFGS", tol=1e-4, options={"maxiter": 100}
     )

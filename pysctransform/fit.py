@@ -147,7 +147,7 @@ def alpha_lbfgs(y, mu, maxoverdispersion=1e5):
             - N * 1 / alpha * npy.log(1 / alpha / (1 / alpha + mu))
         )
 
-    init_alpha = (npy.var(y) - mu) / (mu ** 2)
+    init_alpha = (npy.var(y) - mu) / (mu**2)
     if init_alpha <= 0:
         return npy.inf
     alpha = minimize(
@@ -170,7 +170,7 @@ def theta_lbfgs(y, mu, maxoverdispersion=1e5):
             - N * theta * npy.log(theta / (theta + mu))
         )
 
-    init_theta = (mu ** 2) / (npy.var(y) - mu)
+    init_theta = (mu**2) / (npy.var(y) - mu)
     if init_theta <= 0:
         return npy.inf
     theta = minimize(

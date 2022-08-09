@@ -57,7 +57,7 @@ def robust_scale(x):
     stats = importr("stats")
     base = importr("base")
     return (x - np.median(x)) / (
-        scipystats.median_absolute_deviation(x) + np.finfo(float).eps
+        scipystats.median_abs_deviation(x) + np.finfo(float).eps
     )
 
 

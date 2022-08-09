@@ -73,7 +73,7 @@ def bwSJ(genes_log10_gmean_step1, bw_adjust=3):
 
 def robust_scale(x):
     return (x - npy.median(x)) / (
-        stats.median_absolute_deviation(x) + npy.finfo(float).eps
+        stats.median_abs_deviation(x) + npy.finfo(float).eps
     )
 
 
@@ -83,7 +83,7 @@ def robust_scale_binned(y, x, breaks):
     # categories = bins.categories
     # bins = npy.digitize(x=x, bins=breaks)
     df = pd.DataFrame({"x": y, "bins": bins})
-    tmp = df.groupby(["bins"]).apply(robust_scale)
+    tmp = df.groupby("bins").apply(robust_scale)
     order = df["bins"].argsort()
     tmp = tmp.loc[order]  # sort_values(by=["bins"])
     score = tmp["x"]
@@ -274,7 +274,7 @@ def get_model_params_allgene(
     return params_df
 
 
-def dds(genes_log10_gmean_step1, grid_points=2 ** 10):
+def dds(genes_log10_gmean_step1, grid_points=2**10):
     # density dependent downsampling
     # print(genes_log10_gmean_step1.shape)
     # if genes_log10_gmean_step1.ndim <2:
@@ -370,7 +370,7 @@ def get_regularized_params(
 
 
 def pearson_residual(y, mu, theta, min_var=-npy.inf):
-    variance = mu + npy.divide(mu ** 2, theta.reshape(-1, 1))
+    variance = mu + npy.divide(mu**2, theta.reshape(-1, 1))
     variance[variance < min_var] = min_var
     pearson_residuals = npy.divide(y - mu, npy.sqrt(variance))
     return pearson_residuals
@@ -448,7 +448,7 @@ def correct(residuals, cell_attr, latent_var, model_parameters_fit, umi):
 
     mu = npy.exp(coefficients.dot(model_matrix.T))
     mu = npy.exp(npy.dot(coefficients.values, model_matrix.T))
-    variance = mu + npy.divide(mu ** 2, npy.tile(theta.reshape(-1, 1), mu.shape[1]))
+    variance = mu + npy.divide(mu**2, npy.tile(theta.reshape(-1, 1), mu.shape[1]))
     corrected_data = mu + residuals.values * npy.sqrt(variance)
     corrected_data[corrected_data < 0] = 0
     corrected_counts = sparse.csr_matrix(corrected_data.astype(int))
