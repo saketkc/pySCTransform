@@ -22,18 +22,8 @@ We recommend using `conda <https://docs.conda.io/en/latest/>`_ for installing py
 
 .. code-block:: bash
 
-    conda create -n pysct louvain scanpy
+    conda create -n pysct louvain scanpy pysctransform
     conda activate pysct
-    pip install git+https://github.com/saketkc/pysctransform.git@glmgp
-
-If you would like to use `glmGamPoi <https://bioconductor.org/packages/release/bioc/html/glmGamPoi.html>`_, a faster estimator, ``rpy2`` and ``glmGamPoi`` need to be installed as well:
-
-.. code-block:: bash
-
-    conda create -n pysct louvain scanpy rpy2 bioconductor-glmgampoi
-    conda activate pysct
-    pip install git+https://github.com/saketkc/pysctransform.git
-
 
 ==========
 Quickstart
