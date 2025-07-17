@@ -69,6 +69,11 @@ Quickstart
 .. image:: https://raw.githubusercontent.com/saketkc/pySCTransform/develop/notebooks/output_images/pysct_glmgp_residvar.png
     :target: https://github.com/saketkc/pySCTransform/blob/develop/notebooks/demo.ipynb 
 
+=========
+CITATION
+=========
+Choudhary, Saket, and Rahul Satija. "Comparison and evaluation of statistical error models for scRNA-seq." [Genome Biology 23.1 (2022): 27.](https://genomebiology.biomedcentral.com/articles/10.1186/s13059-021-02584-9)
+
 
 =====
 Notes
