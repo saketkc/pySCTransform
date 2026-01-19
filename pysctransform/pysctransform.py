@@ -72,21 +72,22 @@ def bwSJ(genes_log10_gmean_step1, bw_adjust=3):
 
 
 def robust_scale(x):
-    return (x - npy.median(x)) / (
-        stats.median_abs_deviation(x) + npy.finfo(float).eps
-    )
+    median = npy.median(x)
+    mad = stats.median_abs_deviation(x)
+    return (x - median) / (mad + npy.finfo(float).eps)
 
 
 def robust_scale_binned(y, x, breaks):
     bins = pd.cut(x=x, bins=breaks, ordered=True)
-    df = pd.DataFrame({"x": y, "bins": bins})
+    bin_codes = bins.codes  # Integer codes are faster to work with
 
-    # This approach works in both pandas 1.x and 2.x
     result = npy.empty(len(y))
-    for bin_label, group in df.groupby("bins", observed=True):
-        if len(group) > 0:
-            scaled = robust_scale(group["x"].values)
-            result[group.index.values] = scaled
+    for code in npy.unique(bin_codes):
+        if code == -1:  # NaN bin
+            continue
+        mask = bin_codes == code
+        if mask.sum() > 0:
+            result[mask] = robust_scale(y[mask])
 
     return result
 
@@ -130,10 +131,10 @@ def row_gmean(umi, gmean_eps=1):
 
 
 def row_gmean_sparse(umi, gmean_eps=1):
-
-    gmean = npy.asarray(npy.array([row_gmean(x.todense(), gmean_eps)[0] for x in umi]))
-    gmean = npy.squeeze(gmean)
-    return gmean
+    # Vectorized: work on the full sparse matrix at once
+    umi_dense = npy.asarray(umi.todense())
+    gmean = npy.exp(npy.log(umi_dense + gmean_eps).mean(axis=1)) - gmean_eps
+    return npy.asarray(gmean).ravel()
 
 
 def _process_y(y):
@@ -371,9 +372,18 @@ def get_regularized_params(
 
 
 def pearson_residual(y, mu, theta, min_var=-npy.inf):
-    variance = mu + npy.divide(mu**2, theta.reshape(-1, 1))
-    variance[variance < min_var] = min_var
-    pearson_residuals = npy.divide(y - mu, npy.sqrt(variance))
+    variance = mu + npy.divide(mu ** 2, theta.reshape(-1, 1))
+    if min_var > -npy.inf:
+        variance[variance < min_var] = min_var
+
+    # Handle sparse y more efficiently
+    if sparse.issparse(y):
+        # Convert to dense only once, not implicitly multiple times
+        y_dense = npy.asarray(y.todense())
+        pearson_residuals = (y_dense - mu) / npy.sqrt(variance)
+    else:
+        pearson_residuals = (y - mu) / npy.sqrt(variance)
+
     return pearson_residuals
 
 
