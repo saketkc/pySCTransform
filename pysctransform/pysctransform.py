@@ -79,15 +79,16 @@ def robust_scale(x):
 
 def robust_scale_binned(y, x, breaks):
     bins = pd.cut(x=x, bins=breaks, ordered=True)
-
-    # categories = bins.categories
-    # bins = npy.digitize(x=x, bins=breaks)
     df = pd.DataFrame({"x": y, "bins": bins})
-    tmp = df.groupby("bins").apply(robust_scale)
-    order = df["bins"].argsort()
-    tmp = tmp.loc[order]  # sort_values(by=["bins"])
-    score = tmp["x"]
-    return score
+
+    # This approach works in both pandas 1.x and 2.x
+    result = npy.empty(len(y))
+    for bin_label, group in df.groupby("bins", observed=True):
+        if len(group) > 0:
+            scaled = robust_scale(group["x"].values)
+            result[group.index.values] = scaled
+
+    return result
 
 
 def is_outlier(y, x, th=10):
