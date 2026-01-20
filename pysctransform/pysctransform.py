@@ -623,7 +623,7 @@ def vst(
     if batch_var is None:
         model_matrix = dmatrix(" + ".join(latent_var), data_step1)
     else:
-        formula = " + ".join(latent_var) + " + C(" + batch_var + ")"
+        formula = " + ".join(latent_var) + " * C(" + batch_var + ", Treatment)"
         model_matrix = dmatrix(formula, data_step1)
     useR = False
     if method == "offset":
