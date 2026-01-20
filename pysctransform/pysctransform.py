@@ -620,10 +620,9 @@ def vst(
         model_matrix = dmatrix(" + ".join(latent_var), data_step1)
     else:
         cross_term = "(" + " + ".join(latent_var) + "):" + batch_var
-        model_matrix = dmatrix(
-            " + ".join(latent_var) + cross_term + " + ".join(batch_var) + " + 0",
-            data_step1,
-        )
+        formula = " + ".join(
+            latent_var) + " + " + batch_var + " + " + cross_term + " - 1"
+        model_matrix = dmatrix(formula, data_step1)
     useR = False
     if method == "offset":
         gene_mean = npy.ravel(umi.mean(1))
