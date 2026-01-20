@@ -235,7 +235,6 @@ def get_model_params_allgene_glmgp(
 def get_model_params_allgene(
     umi, model_matrix, method="fit", threads=4, fix_slope=False, verbosity=0
 ):
-
     results = []
     if fix_slope:
         gene_mean = umi.mean(1)
@@ -246,19 +245,25 @@ def get_model_params_allgene(
     else:
         offset_intercept = [npy.nan] * umi.shape[0]
         cell_umi = [npy.nan] * umi.shape[0]
+
+    # Check if umi is sparse or dense
+    is_sparse = sparse.issparse(umi)
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
-        # TODO this should remain sparse
-        feed_list = [
-            (
-                row.todense().reshape((-1, 1)),
+        feed_list = []
+        for i in range(umi.shape[0]):
+            if is_sparse:
+                row = npy.asarray(umi[i].todense()).reshape((-1, 1))
+            else:
+                row = npy.asarray(umi[i]).reshape((-1, 1))
+            feed_list.append((
+                row,
                 model_matrix,
                 method,
                 offset_intercept[i],
                 cell_umi,
                 fix_slope,
-            )
-            for i, row in enumerate(umi)
-        ]
+            ))
 
         if verbosity:
             results = list(
