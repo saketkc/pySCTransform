@@ -14,6 +14,7 @@ import logging
 
 import numpy as npy
 import pandas as pd
+import scipy as scipy
 import statsmodels.discrete.discrete_model as dm
 from joblib import Parallel
 from joblib import delayed
@@ -126,13 +127,13 @@ def make_cell_attr(umi, cell_names):
 
 
 def row_gmean(umi, gmean_eps=1):
-    gmean = npy.exp(npy.log(umi + gmean_eps).mean(1)) - gmean_eps
-    return gmean
-
-
-def row_gmean_sparse(umi, gmean_eps=1):
-    # Vectorized: work on the full sparse matrix at once
-    umi_dense = npy.asarray(umi.todense())
+    """
+    Calculate row-wise geometric mean for sparse or dense matrices.
+    """
+    if sparse.issparse(umi):
+        umi_dense = npy.asarray(umi.todense())
+    else:
+        umi_dense = npy.asarray(umi)
     gmean = npy.exp(npy.log(umi_dense + gmean_eps).mean(axis=1)) - gmean_eps
     return npy.asarray(gmean).ravel()
 
@@ -558,7 +559,7 @@ def vst(
         umi = umi.loc[genes]
     else:
         umi = umi[min_cells_genes_index, :]
-    genes_log10_gmean = npy.log10(row_gmean_sparse(umi, gmean_eps=gmean_eps))
+    genes_log10_gmean = npy.log10(row_gmean(umi, gmean_eps=gmean_eps))
     genes_log10_amean = npy.log10(npy.ravel(umi.mean(1)))
 
     if n_cells is None and n_cells < umi.shape[1]:
@@ -570,7 +571,7 @@ def vst(
         genes_cell_count_step1 = (umi[:, cells_step1_index] > 0).sum(1)
         genes_step1 = genes[genes_cell_count_step1 >= min_cells]
         genes_log10_gmean_step1 = npy.log10(
-            row_gmean_sparse(
+            row_gmean(
                 umi[
                     genes_step1,
                 ],
@@ -604,7 +605,7 @@ def vst(
         genes_step1 = gene_names[genes_step1_index]
         umi_step1 = umi_step1[genes_step1_index, :]  # [:, cells_step1_index]
         genes_log10_gmean_step1 = npy.log10(
-            row_gmean_sparse(umi_step1, gmean_eps=gmean_eps)
+            row_gmean(umi_step1, gmean_eps=gmean_eps)
         )
         genes_log10_amean_step1 = npy.log10(umi_step1.mean(1))
 
