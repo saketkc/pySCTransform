@@ -56,12 +56,13 @@ def is_outlier_naive(x, snr_threshold=25):
     return modified_z_score > snr_threshold
 
 
-def sparse_var(X, axis=None):
-    # X2 = X.copy()
-    # X2.data **= 2
-    # return X2.mean(axis) - npy.square(X2.mean(axis))
-    mean, var = mean_variance_axis(X, axis)
-    return var
+def get_var(X, axis=None):
+    """Calculate variance for sparse or dense matrices."""
+    if sparse.issparse(X):
+        mean, var = mean_variance_axis(X, axis)
+        return var
+    else:
+        return npy.var(X, axis=axis)
 
 
 def bwSJ(genes_log10_gmean_step1, bw_adjust=3):
@@ -663,7 +664,7 @@ def vst(
         npy.squeeze(npy.asarray((umi > 0).sum(1))) / umi.shape[1]
     )
     gene_attr["theta"] = model_parameters["theta"]
-    gene_attr["gene_variance"] = sparse_var(umi, 1)
+    gene_attr["gene_variance"] = get_var(umi, 1)
 
     poisson_genes = None
     if exclude_poisson:
