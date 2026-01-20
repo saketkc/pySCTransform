@@ -471,6 +471,7 @@ def vst(
     umi,
     gene_names=None,
     cell_names=None,
+    cell_attr_extra=None,
     n_cells=5000,
     latent_var=["log10_umi"],
     batch_var=None,
@@ -550,6 +551,9 @@ def vst(
     min_cells_genes_index = npy.squeeze(genes_cell_count >= min_cells)
     genes = gene_names[min_cells_genes_index]
     cell_attr = make_cell_attr(umi, cell_names)
+    if cell_attr_extra is not None:
+        for col in cell_attr_extra.columns:
+            cell_attr[col] = cell_attr_extra.loc[cell_attr.index, col].values
     if isinstance(umi, pd.DataFrame):
         umi = umi.loc[genes]
     else:
@@ -834,6 +838,7 @@ def SCTransform(
     n_genes=2000,
     res_clip_range="seurat",
     var_features_n=3000,
+    batch_var=None,
     **kwargs
 ):
     """Wrapper around vst
@@ -862,6 +867,9 @@ def SCTransform(
     adata = adata.copy()
     exclude_poisson = False
     method = "theta_ml"
+    cell_attr_extra = None
+    if batch_var is not None:
+        cell_attr_extra = adata.obs[[batch_var]]
     if vst_flavor == "v2":
         method = "fix-slope"
         exclude_poisson = True
@@ -870,10 +878,12 @@ def SCTransform(
         adata.X.T,
         gene_names=adata.var_names.tolist(),
         cell_names=adata.obs_names.tolist(),
+        cell_attr_extra=cell_attr_extra,
         method=method,
         n_cells=n_cells,
         n_genes=n_genes,
         exclude_poisson=exclude_poisson,
+        batch_var=batch_var,
     )
     residuals = get_hvg_residuals(vst_out, var_features_n, res_clip_range)
     return residuals
