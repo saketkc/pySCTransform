@@ -22,8 +22,21 @@ We recommend using `conda <https://docs.conda.io/en/latest/>`_ for installing py
 
 .. code-block:: bash
 
-    conda create -n pysct louvain scanpy pysctransform
+    conda create -n pysct python==3.12
     conda activate pysct
+
+
+Then install the library:
+
+.. code-block:: bash
+
+    pip install -e .
+
+Or to install development dependencies:
+
+.. code-block:: bash
+
+    pip install -e ".[dev]"
 
 ==========
 Quickstart
@@ -68,6 +81,23 @@ Quickstart
     
 .. image:: https://raw.githubusercontent.com/saketkc/pySCTransform/develop/notebooks/output_images/pysct_glmgp_residvar.png
     :target: https://github.com/saketkc/pySCTransform/blob/develop/notebooks/demo.ipynb 
+
+===========
+Development
+===========
+
+To run various tests:
+
+.. code-block:: bash
+
+# Unit tests only
+pytest -m "not benchmark"
+
+# Benchmarks only
+pytest -m benchmark --benchmark-only
+
+# Everything
+pytest
 
 =========
 CITATION

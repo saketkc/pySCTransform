@@ -82,7 +82,6 @@ def robust_scale(x):
 def robust_scale_binned(y, x, breaks):
     bins = pd.cut(x=x, bins=breaks, ordered=True)
     bin_codes = bins.codes  # Integer codes are faster to work with
-
     result = npy.empty(len(y))
     for code in npy.unique(bin_codes):
         if code == -1:  # NaN bin
@@ -90,7 +89,6 @@ def robust_scale_binned(y, x, breaks):
         mask = bin_codes == code
         if mask.sum() > 0:
             result[mask] = robust_scale(y[mask])
-
     return result
 
 
