@@ -1,6 +1,7 @@
 """Main module."""
 import time
 import warnings
+from typing import Any
 
 from KDEpy import FFTKDE
 from scipy import interpolate
@@ -14,7 +15,6 @@ import logging
 
 import numpy as npy
 import pandas as pd
-import scipy as scipy
 import statsmodels.discrete.discrete_model as dm
 from joblib import Parallel
 from joblib import delayed
@@ -125,16 +125,37 @@ def make_cell_attr(umi, cell_names):
     return cell_attr
 
 
-def row_gmean(umi, gmean_eps=1):
-    """
-    Calculate row-wise geometric mean for sparse or dense matrices.
-    """
+def row_gmean(umi, gmean_eps: float = 1) -> npy.ndarray:
     if sparse.issparse(umi):
-        umi_dense = npy.asarray(umi.todense())
+        return _row_gmean_sparse(umi, gmean_eps)
     else:
         umi_dense = npy.asarray(umi)
-    gmean = npy.exp(npy.log(umi_dense + gmean_eps).mean(axis=1)) - gmean_eps
-    return npy.asarray(gmean).ravel()
+        gmean = npy.exp(npy.log(umi_dense + gmean_eps).mean(axis=1)) - gmean_eps
+        return npy.asarray(gmean).ravel()
+
+
+def _row_gmean_sparse(umi: sparse.spmatrix, gmean_eps: float = 1) -> npy.ndarray:
+    umi_csr = sparse.csr_matrix(umi)
+    n_cols = umi_csr.shape[1]
+
+    # log(x + eps) for non-zero entries
+    log_data = npy.log(umi_csr.data + gmean_eps)
+
+    # Create sparse matrix with log values
+    log_umi = sparse.csr_matrix(
+        (log_data, umi_csr.indices, umi_csr.indptr),
+        shape=umi_csr.shape
+    )
+
+    # Sum of log values for non-zero entries
+    log_sum = npy.asarray(log_umi.sum(axis=1)).ravel()
+
+    # Count zeros per row and add their contribution: zeros become log(0 + eps) = log(eps)
+    nnz_per_row = npy.diff(umi_csr.indptr)
+    n_zeros = n_cols - nnz_per_row
+    log_sum += n_zeros * npy.log(gmean_eps)
+
+    return npy.exp(log_sum / n_cols) - gmean_eps
 
 
 def _process_y(y):
