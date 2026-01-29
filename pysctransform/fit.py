@@ -109,7 +109,7 @@ def estimate_mu_poisson(y, model_matrix):
 def theta_ml(y, mu, limit=9, eps=1e-4):
     """
     Maximum likelihood estimation of theta for negative binomial - matching R's
-    MASS::theta.ml exactly.
+    MASS::theta.ml exactly (9 in R).
 
     Parameters
     ----------
@@ -118,7 +118,7 @@ def theta_ml(y, mu, limit=9, eps=1e-4):
     mu : array
         Predicted means from Poisson GLM
     limit : int
-        Maximum number of iterations (default 10)
+        Maximum number of iterations (default 9)
     eps : float
         Convergence threshold (default 1e-4)
 
