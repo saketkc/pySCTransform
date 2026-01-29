@@ -1,6 +1,3 @@
-import numbers
-import sys
-
 import numpy as npy
 import statsmodels
 import statsmodels.api as sm
@@ -8,7 +5,6 @@ from scipy.optimize import minimize
 from scipy.special import digamma
 from scipy.special import gammaln
 from scipy.special import polygamma
-from statsmodels.api import GLM
 
 
 def trigamma(x):
@@ -36,7 +32,6 @@ def lookup_table(y):
 
 
 def theta_nb_score(y, mu, theta, fast=True):
-
     y_lookup = None
     N = len(y)
     if fast:
@@ -49,8 +44,8 @@ def theta_nb_score(y, mu, theta, fast=True):
         digamma_theta = digamma(theta) * N
         mu_term = (npy.log(theta) - npy.log(mu + theta) + 1) * N
         y_term = (
-            1 / (mu + theta) * (y_sum + N * theta)
-        )  #  #sum((y + theta) / (mu + theta))
+                1 / (mu + theta) * (y_sum + N * theta)
+        )  # #sum((y + theta) / (mu + theta))
 
         lld = digamma_sum - digamma_theta - y_term + mu_term
         return lld
@@ -73,7 +68,8 @@ def theta_nb_hessian(y, mu, theta, fast=True):
         y_lookup = lookup_table(y)
         # y_lookup = npy.asarray(lookup_table(y))
         y_sum = npy.dot(y_lookup[:, 0], y_lookup[:, 1])
-        trigamma_sum = npy.dot(trigamma(y_lookup[:, 0] + theta), y_lookup[:, 1])
+        trigamma_sum = npy.dot(trigamma(y_lookup[:, 0] + theta),
+                               y_lookup[:, 1])
         trigamma_theta = trigamma(theta) * N
         mu_term = (1 / theta - 2 / (mu + theta)) * N
         y_term = (y_sum + N * theta) / (mu + theta) ** 2
@@ -141,13 +137,13 @@ def alpha_lbfgs(y, mu, maxoverdispersion=1e5):
 
     def nll(alpha):
         return (
-            -npy.sum(gammaln(1 / alpha + y))
-            + N * gammaln(1 / alpha)
-            - ysum * npy.log(mu / (1 / alpha + mu))
-            - N * 1 / alpha * npy.log(1 / alpha / (1 / alpha + mu))
+                -npy.sum(gammaln(1 / alpha + y))
+                + N * gammaln(1 / alpha)
+                - ysum * npy.log(mu / (1 / alpha + mu))
+                - N * 1 / alpha * npy.log(1 / alpha / (1 / alpha + mu))
         )
 
-    init_alpha = (npy.var(y) - mu) / (mu**2)
+    init_alpha = (npy.var(y) - mu) / (mu ** 2)
     if init_alpha <= 0:
         return npy.inf
     alpha = minimize(
@@ -164,16 +160,19 @@ def theta_lbfgs(y, mu, maxoverdispersion=1e5):
 
     def nll(theta):
         return (
-            -npy.sum(gammaln(theta + y))
-            + N * gammaln(theta)
-            - ysum * npy.log(mu / (theta + mu))
-            - N * theta * npy.log(theta / (theta + mu))
+                -npy.sum(gammaln(theta + y))
+                + N * gammaln(theta)
+                - ysum * npy.log(mu / (theta + mu))
+                - N * theta * npy.log(theta / (theta + mu))
         )
 
-    init_theta = (mu**2) / (npy.var(y) - mu)
+    init_theta = (mu ** 2) / (npy.var(y) - mu)
     if init_theta <= 0:
         return npy.inf
     theta = minimize(
-        nll, init_theta, bounds=[(1 / maxoverdispersion, None)], method="L-BFGS-B"
+        nll,
+        init_theta,
+        bounds=[(1 / maxoverdispersion, None)],
+        method="L-BFGS-B"
     )
     return theta.x[0]

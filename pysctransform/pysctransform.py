@@ -1,43 +1,29 @@
 """Main module."""
-import time
-import warnings
-from typing import Any
-
-from KDEpy import FFTKDE
-from scipy import interpolate
-from scipy import sparse
-from statsmodels.tools.sm_exceptions import ConvergenceWarning
-
-warnings.simplefilter("ignore", ConvergenceWarning)
-warnings.simplefilter("ignore", RuntimeWarning)
 import concurrent.futures
 import logging
+import time
+import warnings
 
 import numpy as npy
 import pandas as pd
 import statsmodels.discrete.discrete_model as dm
-from joblib import Parallel
-from joblib import delayed
+from KDEpy import FFTKDE
+from joblib import Parallel, delayed
 from patsy import dmatrix
-from scipy import stats
+from scipy import interpolate, sparse, stats
 from scipy.sparse import csr_matrix
-from statsmodels.nonparametric.kernel_regression import KernelReg
-from tqdm import tqdm
 from sklearn.utils.sparsefuncs import mean_variance_axis
+from statsmodels.nonparametric.kernel_regression import KernelReg
+from statsmodels.tools.sm_exceptions import ConvergenceWarning
+from tqdm import tqdm
 
+from .fit import alpha_lbfgs, estimate_mu_poisson, theta_lbfgs, theta_ml
+from .fit_glmgp import fit_glmgp, fit_glmgp_offset
+from .r_bw import bw_SJr, is_outlier_r, ksmooth
+
+warnings.simplefilter("ignore", ConvergenceWarning)
+warnings.simplefilter("ignore", RuntimeWarning)
 logging.captureWarnings(True)
-
-
-from .fit import alpha_lbfgs
-from .fit import estimate_mu_poisson
-from .fit import theta_lbfgs
-from .fit import theta_ml
-from .fit_glmgp import fit_glmgp
-from .fit_glmgp import fit_glmgp_offset
-
-from .r_bw import bw_SJr
-from .r_bw import is_outlier_r
-from .r_bw import ksmooth
 
 
 def is_outlier_naive(x, snr_threshold=25):
@@ -67,7 +53,9 @@ def get_var(X, axis=None):
 
 def bwSJ(genes_log10_gmean_step1, bw_adjust=3):
     # See https://kdepy.readthedocs.io/en/latest/bandwidth.html
-    fit = FFTKDE(kernel="gaussian", bw="ISJ").fit(npy.asarray(genes_log10_gmean_step1))
+    fit = FFTKDE(kernel="gaussian", bw="ISJ").fit(
+        npy.asarray(genes_log10_gmean_step1),
+    )
     _ = fit.evaluate()
     bw = fit.bw * bw_adjust
     return npy.array([bw], dtype=float)
@@ -97,7 +85,7 @@ def is_outlier(y, x, th=10):
     eps = npy.finfo(float).eps * 10
     bin_width = bin_width[0]
     breaks1 = npy.arange(
-        start=npy.nanmin(x) - eps, stop=npy.nanmax(x) + bin_width, step=bin_width
+        start=npy.nanmin(x) - eps, stop=npy.nanmax(x) + bin_width, step=bin_width,
     )
     breaks2 = npy.arange(
         start=npy.nanmin(x) - eps - bin_width / 2,
@@ -144,13 +132,14 @@ def _row_gmean_sparse(umi: sparse.spmatrix, gmean_eps: float = 1) -> npy.ndarray
     # Create sparse matrix with log values
     log_umi = sparse.csr_matrix(
         (log_data, umi_csr.indices, umi_csr.indptr),
-        shape=umi_csr.shape
+        shape=umi_csr.shape,
     )
 
     # Sum of log values for non-zero entries
     log_sum = npy.asarray(log_umi.sum(axis=1)).ravel()
 
-    # Count zeros per row and add their contribution: zeros become log(0 + eps) = log(eps)
+    # Count zeros per row and add their contribution:
+    # zeros become log(0 + eps) = log(eps)
     nnz_per_row = npy.diff(umi_csr.indptr)
     n_zeros = n_cols - nnz_per_row
     log_sum += n_zeros * npy.log(gmean_eps)
@@ -167,12 +156,12 @@ def _process_y(y):
 
 
 def get_model_params_pergene(
-    gene_umi,
-    model_matrix,
-    method="theta_ml",
-    offset_intercept=None,
-    cell_umi=None,
-    fix_slope=False,
+        gene_umi,
+        model_matrix,
+        method="theta_ml",
+        offset_intercept=None,
+        cell_umi=None,
+        fix_slope=False,
 ):  # latent_var, cell_attr):
     gene_umi = _process_y(gene_umi)
     if method == "sm_nb":
@@ -227,15 +216,14 @@ def get_model_params_pergene_glmgp(gene_umi, coldata, design="~ log10_umi"):
 def get_model_params_pergene_glmgp_offset(gene_umi, coldata, log_umi, design="~ 1"):
     gene_umi = gene_umi.todense()
     params = fit_glmgp_offset(
-        y=gene_umi, coldata=coldata, design=design, log_umi=log_umi
+        y=gene_umi, coldata=coldata, design=design, log_umi=log_umi,
     )
     return params
 
 
 def get_model_params_allgene_glmgp(
-    umi, coldata, bin_size=500, threads=4, use_offset=False, verbosity=0
+        umi, coldata, bin_size=500, threads=4, use_offset=False, verbosity=0,
 ):
-
     results = []
     log_umi = npy.log(npy.ravel(umi.sum(0)))
     if use_offset:
@@ -253,7 +241,7 @@ def get_model_params_allgene_glmgp(
 
 
 def get_model_params_allgene(
-    umi, model_matrix, method="fit", threads=4, fix_slope=False, verbosity=0
+        umi, model_matrix, method="fit", threads=4, fix_slope=False, verbosity=0,
 ):
     results = []
     if fix_slope:
@@ -276,25 +264,27 @@ def get_model_params_allgene(
                 row = npy.asarray(umi[i].todense()).reshape((-1, 1))
             else:
                 row = npy.asarray(umi[i]).reshape((-1, 1))
-            feed_list.append((
-                row,
-                model_matrix,
-                method,
-                offset_intercept[i],
-                cell_umi,
-                fix_slope,
-            ))
+            feed_list.append(
+                (
+                    row,
+                    model_matrix,
+                    method,
+                    offset_intercept[i],
+                    cell_umi,
+                    fix_slope,
+                ),
+            )
 
         if verbosity:
             results = list(
                 tqdm(
                     executor.map(lambda p: get_model_params_pergene(*p), feed_list),
                     total=len(feed_list),
-                )
+                ),
             )
         else:
             results = list(
-                executor.map(lambda p: get_model_params_pergene(*p), feed_list)
+                executor.map(lambda p: get_model_params_pergene(*p), feed_list),
             )
 
     params_df = pd.DataFrame(results)
@@ -302,7 +292,7 @@ def get_model_params_allgene(
     return params_df
 
 
-def dds(genes_log10_gmean_step1, grid_points=2**10):
+def dds(genes_log10_gmean_step1, grid_points=2 ** 10):
     # density dependent downsampling
     # print(genes_log10_gmean_step1.shape)
     # if genes_log10_gmean_step1.ndim <2:
@@ -320,25 +310,25 @@ def dds(genes_log10_gmean_step1, grid_points=2**10):
 
 
 def get_regularized_params(
-    model_parameters,
-    genes,
-    genes_step1,
-    genes_log10_gmean_step1,
-    genes_log10_gmean,
-    cell_attr,
-    umi,
-    batch_var=None,
-    bw_adjust=3,
-    gmean_eps=1,
-    theta_regularization="od_factor",
-    exclude_poisson=False,
-    poisson_genes=None,
-    useR=False,
+        model_parameters,
+        genes,
+        genes_step1,
+        genes_log10_gmean_step1,
+        genes_log10_gmean,
+        cell_attr,
+        umi,
+        batch_var=None,
+        bw_adjust=3,
+        gmean_eps=1,
+        theta_regularization="od_factor",
+        exclude_poisson=False,
+        poisson_genes=None,
+        useR=False,
 ):
     model_parameters = model_parameters.copy()
 
     model_parameters_fit = pd.DataFrame(
-        npy.nan, index=genes, columns=model_parameters.columns
+        npy.nan, index=genes, columns=model_parameters.columns,
     )
 
     x_points_df = pd.DataFrame({"gene_log10_gmean": genes_log10_gmean})
@@ -363,7 +353,7 @@ def get_regularized_params(
         else:
             bw = bwSJ(genes_log10_gmean_step1, bw_adjust=bw_adjust)  # .values)
             reg = KernelReg(
-                endog=endog, exog=exog_fit, var_type="c", reg_type="ll", bw=bw
+                endog=endog, exog=exog_fit, var_type="c", reg_type="ll", bw=bw,
             )
             fit = reg.fit(x_points)
             model_parameters_fit[column] = npy.squeeze(fit[0])
@@ -372,7 +362,7 @@ def get_regularized_params(
         theta = npy.power(10, (model_parameters_fit["od_factor"]))
     else:
         theta = npy.power(10, genes_log10_gmean) / (
-            npy.power(10, model_parameters_fit["od_factor"]) - 1
+                npy.power(10, model_parameters_fit["od_factor"]) - 1
         )
     model_parameters_fit["theta"] = theta
     if exclude_poisson:
@@ -391,7 +381,7 @@ def get_regularized_params(
             gene_mean = pd.Series(npy.ravel(umi.mean(1)), index=genes)
             mean_cell_sum = npy.mean(npy.ravel(umi.sum(0)))
             model_parameters_fit.loc[poisson_genes, "Intercept"] = npy.log(
-                gene_mean[poisson_genes]
+                gene_mean[poisson_genes],
             ) - npy.log(mean_cell_sum)
 
     return model_parameters_fit
@@ -424,13 +414,12 @@ def deviance_residual(y, mu, theta, weight=1):
 
 
 def get_residuals(
-    umi,
-    model_matrix,
-    model_parameters_fit,
-    residual_type="pearson",
-    res_clip_range="default",
+        umi,
+        model_matrix,
+        model_parameters_fit,
+        residual_type="pearson",
+        res_clip_range="default",
 ):
-
     """Get residuals for a fit model.
 
     Parameters
@@ -441,8 +430,10 @@ def get_residuals(
     model_parameters_fit: DataFrame
                           dataframe of model fit parameters
     res_clip_range: string or list
-                    options: 1)"seurat": Clips residuals to -sqrt(ncells/30), sqrt(ncells/30)
-                             2)"default": Clips residuals to -sqrt(ncells), sqrt(ncells)
+                    options: 1)"seurat": Clips residuals to -sqrt(ncells/30),
+                        sqrt(ncells/30)
+                             2)"default": Clips residuals to -sqrt(ncells),
+                        sqrt(ncells)
 
     Returns
     -------
@@ -451,7 +442,7 @@ def get_residuals(
     """
 
     subset = npy.asarray(
-        model_parameters_fit[model_matrix.design_info.column_names].values
+        model_parameters_fit[model_matrix.design_info.column_names].values,
     )
     theta = npy.asarray(model_parameters_fit["theta"].values)
 
@@ -485,7 +476,7 @@ def correct(residuals, cell_attr, latent_var, model_parameters_fit, umi):
 
     mu = npy.exp(coefficients.dot(model_matrix.T))
     mu = npy.exp(npy.dot(coefficients.values, model_matrix.T))
-    variance = mu + npy.divide(mu**2, npy.tile(theta.reshape(-1, 1), mu.shape[1]))
+    variance = mu + npy.divide(mu ** 2, npy.tile(theta.reshape(-1, 1), mu.shape[1]))
     corrected_data = mu + residuals.values * npy.sqrt(variance)
     corrected_data[corrected_data < 0] = 0
     corrected_counts = sparse.csr_matrix(corrected_data.astype(int))
@@ -494,29 +485,30 @@ def correct(residuals, cell_attr, latent_var, model_parameters_fit, umi):
 
 
 def vst(
-    umi,
-    gene_names=None,
-    cell_names=None,
-    cell_attr_extra=None,
-    n_cells=5000,
-    latent_var=["log10_umi"],
-    batch_var=None,
-    gmean_eps=1,
-    min_cells=5,
-    n_genes=2000,
-    threads=4,
-    method="theta_ml",
-    theta_given=10,
-    theta_regularization="od_factor",
-    residual_type="pearson",
-    correct_counts=False,
-    exclude_poisson=False,
-    fix_slope=False,
-    verbosity=0,
+        umi,
+        gene_names=None,
+        cell_names=None,
+        cell_attr_extra=None,
+        n_cells=5000,
+        latent_var=["log10_umi"],
+        batch_var=None,
+        gmean_eps=1,
+        min_cells=5,
+        n_genes=2000,
+        threads=4,
+        method="theta_ml",
+        theta_given=10,
+        theta_regularization="od_factor",
+        residual_type="pearson",
+        correct_counts=False,
+        exclude_poisson=False,
+        fix_slope=False,
+        verbosity=0,
 ):
     """Perform variance stabilizing transformation.
 
-    Residuals are currently stored for all genes (might be memory intensive for larger datasets).
+    Residuals are currently stored for all genes (might be memory intensive
+    for larger datasets).
 
     Parameters
     ----------
@@ -534,10 +526,12 @@ def vst(
     threads: int
              Number of threads to use (caveat: higher threads require higher memory)
     theta_given: int
-                 Used only when method == "offset", for fixing the value of inverse overdispersion parameter
-                 following Lause et al. (2021) offset model; default is 10
+                 Used only when method == "offset", for fixing the value of inverse
+                 overdispersion parameter following Lause et al. (2021) offset
+                 model; default is 10
     theta_regularization: string
-                         "od_factor" or "theta": parameter to run smoothing operation on for theta,
+                         "od_factor" or "theta": parameter to run smoothing operation
+                         on for theta,
                          od_factor = 1 +mu/theta; default is od_factor
 
     residual_type: string
@@ -545,7 +539,8 @@ def vst(
     correct_counts: bool
                     Whether to correct counts by reversing the GLM with median values
     exclude_poisson: bool
-                     To exclude poisson genes from regularization and set final parameters based on offset model; default is False
+                     To exclude poisson genes from regularization and set final
+                     parameters based on offset model; default is False
     fix_slope: bool
                Whether to fix the slope; default is False
     verbosity: bool
@@ -561,7 +556,8 @@ def vst(
     if gene_names is None:
         if not isinstance(umi, pd.DataFrame):
             raise RuntimeError(
-                "`gene_names` and `cell_names` are required when umi is not a dataframe"
+                "`gene_names` and `cell_names` are required when umi is not " +
+                "a dataframe"
             )
         else:
             gene_names = umi.index.tolist()
@@ -590,7 +586,7 @@ def vst(
     if n_cells is None and n_cells < umi.shape[1]:
         # downsample cells to speed up the first step
         cells_step1_index = npy.random.choice(
-            a=npy.arange(len(cell_names), dtype=int), size=n_cells, replace=False
+            a=npy.arange(len(cell_names), dtype=int), size=n_cells, replace=False,
         )
         cells_step1 = cell_names[cells_step1_index]
         genes_cell_count_step1 = (umi[:, cells_step1_index] > 0).sum(1)
@@ -601,14 +597,14 @@ def vst(
                     genes_step1,
                 ],
                 gmean_eps=gmean_eps,
-            )
+            ),
         )
         genes_log10_amean_step1 = npy.log10(
             npy.ravel(
                 umi[
                     genes_step1,
-                ].mean(1)
-            )
+                ].mean(1),
+            ),
         )
         umi_step1 = umi[:, cells_step1_index]
     else:
@@ -625,12 +621,13 @@ def vst(
         sampling_prob = dds(genes_log10_gmean_step1)
 
         genes_step1_index = npy.random.choice(
-            a=npy.arange(len(genes_step1)), size=n_genes, replace=False, p=sampling_prob
+            a=npy.arange(len(genes_step1)), size=n_genes, replace=False,
+            p=sampling_prob,
         )
         genes_step1 = gene_names[genes_step1_index]
         umi_step1 = umi_step1[genes_step1_index, :]  # [:, cells_step1_index]
         genes_log10_gmean_step1 = npy.log10(
-            row_gmean(umi_step1, gmean_eps=gmean_eps)
+            row_gmean(umi_step1, gmean_eps=gmean_eps),
         )
         genes_log10_amean_step1 = npy.log10(umi_step1.mean(1))
 
@@ -665,13 +662,13 @@ def vst(
         useR = True
     elif method == "fix-slope":
         model_parameters = get_model_params_allgene_glmgp(
-            umi_step1, data_step1, use_offset=True
+            umi_step1, data_step1, use_offset=True,
         )
         model_parameters.index = genes_step1
         useR = True
     elif method in ["theta_ml", "theta_lbfgs", "alpha_lbfgs"]:
         model_parameters = get_model_params_allgene(
-            umi_step1, model_matrix, method, threads, fix_slope
+            umi_step1, model_matrix, method, threads, fix_slope,
         )
         model_parameters.index = genes_step1
     else:
@@ -680,7 +677,7 @@ def vst(
     gene_attr["gene_amean"] = npy.power(10, genes_log10_amean)
     gene_attr["gene_gmean"] = npy.power(10, genes_log10_gmean)
     gene_attr["gene_detectation_rate"] = (
-        npy.squeeze(npy.asarray((umi > 0).sum(1))) / umi.shape[1]
+            npy.squeeze(npy.asarray((umi > 0).sum(1))) / umi.shape[1]
     )
     gene_attr["theta"] = model_parameters["theta"]
     gene_attr["gene_variance"] = get_var(umi, 1)
@@ -689,7 +686,7 @@ def vst(
     if exclude_poisson:
         poisson_genes1 = gene_attr.loc[
             gene_attr["gene_amean"] >= gene_attr["gene_variance"]
-        ].index.tolist()
+            ].index.tolist()
         poisson_genes2 = gene_attr.loc[gene_attr["gene_amean"] <= 1e-3].index.tolist()
         poisson_genes = set(poisson_genes1).union(poisson_genes2)
 
@@ -718,11 +715,11 @@ def vst(
     for col in model_parameters.columns:
         if method == "glmgp":
             col_outliers = is_outlier_r(
-                model_parameters[col].values, genes_log10_gmean_step1
+                model_parameters[col].values, genes_log10_gmean_step1,
             )
         else:
             col_outliers = is_outlier(
-                model_parameters[col].values, genes_log10_gmean_step1
+                model_parameters[col].values, genes_log10_gmean_step1,
             )
         outliers_df[col] = col_outliers
 
@@ -732,7 +729,7 @@ def vst(
         model_parameters["od_factor"] = npy.log10(model_parameters["theta"])
     else:
         model_parameters["od_factor"] = npy.log10(
-            1 + npy.power(10, genes_log10_gmean_step1) / model_parameters["theta"]
+            1 + npy.power(10, genes_log10_gmean_step1) / model_parameters["theta"],
         )
 
     model_parameters_to_return = model_parameters.copy()
@@ -750,7 +747,7 @@ def vst(
         model_parameters = model_parameters.loc[genes_non_outliers]
         if exclude_poisson:
             non_poisson_genes = set(model_parameters.index.tolist()).difference(
-                poisson_genes
+                poisson_genes,
             )
             model_parameters = model_parameters.loc[non_poisson_genes]
         model_parameters_fit = get_regularized_params(
@@ -777,7 +774,7 @@ def vst(
 
     start = time.time()
     residuals = pd.DataFrame(
-        get_residuals(umi, model_matrix, model_parameters_fit, residual_type)
+        get_residuals(umi, model_matrix, model_parameters_fit, residual_type),
     )
     residuals.index = genes
     residuals.columns = cell_names
@@ -793,7 +790,7 @@ def vst(
     corrected_counts = None
     if correct_counts:
         corrected_counts = correct(
-            residuals, cell_attr, latent_var, model_parameters_fit, umi
+            residuals, cell_attr, latent_var, model_parameters_fit, umi,
         )
 
     return {
@@ -825,10 +822,13 @@ def get_hvg_residuals(vst_out, var_features_n=3000, res_clip_range="seurat"):
     vst_out: dict
              output of vst()
     res_clip_range: string or list
-                    options: 1)"seurat": Clips residuals to -sqrt(ncells/30), sqrt(ncells/30)
-                             2)"default": Clips residuals to -sqrt(ncells), sqrt(ncells)
+                    options: 1)"seurat": Clips residuals to -sqrt(ncells/30),
+                        sqrt(ncells/30)
+                             2)"default": Clips residuals to -sqrt(ncells),
+                        sqrt(ncells)
     var_features_n: int
-                    Number of variable features to select (for calculating a subset of pearson residuals)
+                    Number of variable features to select (for calculating a subset
+                    of pearson residuals)
 
     Returns
     -------
@@ -855,15 +855,15 @@ def get_hvg_residuals(vst_out, var_features_n=3000, res_clip_range="seurat"):
 
 
 def SCTransform(
-    adata,
-    vst_flavor=None,
-    method="theta_ml",
-    n_cells=5000,
-    n_genes=2000,
-    res_clip_range="seurat",
-    var_features_n=3000,
-    batch_var=None,
-    **kwargs
+        adata,
+        vst_flavor=None,
+        method="theta_ml",
+        n_cells=5000,
+        n_genes=2000,
+        res_clip_range="seurat",
+        var_features_n=3000,
+        batch_var=None,
+        **kwargs,
 ):
     """Wrapper around vst
 
@@ -881,10 +881,13 @@ def SCTransform(
     n_genes: int
              Number of genes to use for estimating parameters in Step1; default is 2000
     res_clip_range: string or list
-                    options: 1)"seurat": Clips residuals to -sqrt(ncells/30), sqrt(ncells/30)
-                             2)"default": Clips residuals to -sqrt(ncells), sqrt(ncells)
+                    options: 1)"seurat": Clips residuals to -sqrt(ncells/30),
+                        sqrt(ncells/30)
+                             2)"default": Clips residuals to -sqrt(ncells),
+                        sqrt(ncells)
     var_features_n: int
-                    Number of variable features to select (for calculating a subset of pearson residuals)
+                    Number of variable features to select (for calculating a subset
+                    of pearson residuals)
 
 
     """

@@ -25,8 +25,12 @@ setup(
         "Programming Language :: Python :: 3.12",
         "Topic :: Scientific/Engineering :: Bio-Informatics",
     ],
-    description="Python package for interacting with SRAdb and downloading datasets from SRA",
-    entry_points={"console_scripts": ["pysctransform=pysctransform.cli:parse_args"]},
+    description="Python implementation of SCTransform for single-cell" +
+                "RNA-seq data normalization",
+    entry_points={
+        "console_scripts":
+            ["pysctransform=pysctransform.cli:parse_args"]
+    },
     license="BSD license",
     long_description=readme + "\n\n" + history,
     include_package_data=True,

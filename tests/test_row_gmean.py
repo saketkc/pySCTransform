@@ -3,6 +3,7 @@ import scipy as scipy
 
 from pysctransform.pysctransform import row_gmean  # adjust import
 
+
 def test_row_gmean_sparse_dense_equivalence():
     """Sparse and dense implementations should produce identical results."""
     np.random.seed(42)

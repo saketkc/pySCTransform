@@ -34,7 +34,9 @@ def plot_fit(pysct_results, xaxis="gmean", fig=None):
     if fig is None:
         fig = plt.figure(figsize=(12, 3))
     genes_log10_mean = pysct_results["genes_log10_{}".format(xaxis)]
-    genes_log10_mean_step1 = pysct_results["genes_log10_{}_step1".format(xaxis)]
+    genes_log10_mean_step1 = pysct_results[
+        "genes_log10_{}_step1".format(xaxis)
+    ]
     model_params = pysct_results["model_parameters"]
     model_params_fit = pysct_results["model_parameters_fit"]
 
@@ -102,9 +104,16 @@ def plot_residual_var(pysct_results, topngenes=30, label_genes=True, ax=None):
     ax.set_xscale("log")
 
     ax.scatter(
-        gene_attr["gene_gmean"], gene_attr["residual_variance"], s=1.5, color="black"
+        gene_attr["gene_gmean"],
+        gene_attr["residual_variance"],
+        s=1.5,
+        color="black"
     )
-    ax.scatter(topn["gene_gmean"], topn["residual_variance"], s=1.5, color="deeppink")
+    ax.scatter(
+        topn["gene_gmean"],
+        topn["residual_variance"],
+        s=1.5, color="deeppink"
+    )
     ax.axhline(1, linestyle="dashed", color="red")
     ax.set_xlabel("Gene gmean")
     ax.set_ylabel("Residual variance")
@@ -119,7 +128,10 @@ def plot_residual_var(pysct_results, topngenes=30, label_genes=True, ax=None):
 
 
 def compare_with_sct(
-    vst_out, sct_modelparsfit_file, sct_geneattr_file, sct_modelpars_file=None
+        vst_out,
+        sct_modelparsfit_file,
+        sct_geneattr_file,
+        sct_modelpars_file=None
 ):
     sct_modelparsfit = pd.read_csv(sct_modelparsfit_file, index_col=0)
     sct_geneattr = pd.read_csv(sct_geneattr_file, index_col=0)
@@ -128,7 +140,9 @@ def compare_with_sct(
         nplots = 4
         sct_modelpars = pd.read_csv(sct_modelpars_file, index_col=0)
         sct_modelpars.columns = ["sct_" + x for x in sct_modelpars.columns]
-        model_pars_merged = vst_out["model_parameters"].join(sct_modelpars, how="inner")
+        model_pars_merged = vst_out["model_parameters"].join(
+            sct_modelpars, how="inner"
+        )
 
     sct_modelparsfit.columns = ["sct_" + x for x in sct_modelparsfit.columns]
     sct_geneattr.columns = ["sct_" + x for x in sct_geneattr.columns]
@@ -177,7 +191,11 @@ def compare_with_sct(
     )[0]
 
     ax.axline(
-        [0, 0], [1, 1], linestyle="dashed", color="red", label="r={:.2f}".format(cor)
+        [0, 0],
+        [1, 1],
+        linestyle="dashed",
+        color="red",
+        label="r={:.2f}".format(cor)
     )
     ax.set_xlabel("SCT residual variance")
     ax.set_ylabel("pySCT residual variance")
@@ -193,7 +211,10 @@ def compare_with_sct(
         )
         ax.axline([0, 0], [1, 1], linestyle="dashed", color="red")
         model_pars_merged = model_pars_merged.replace(np.inf, 1e5)  # dropna()
-        cor = pearsonr(model_pars_merged["sct_theta"], model_pars_merged["theta"])[0]
+        cor = pearsonr(
+            model_pars_merged["sct_theta"],
+            model_pars_merged["theta"]
+        )[0]
         ax.set_xlabel("SCT theta")
         ax.set_ylabel("pySCT theta")
 
