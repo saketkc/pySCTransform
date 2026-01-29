@@ -108,6 +108,8 @@ def make_cell_attr(umi, cell_names):
     cell_attr["n_expressed_genes"] = expressed_genes
     # this is referrred to as gene in SCTransform
     cell_attr["log10_gene"] = log10_expressed_genes
+    # R calls it log_umi when really log10_umi
+    cell_attr["log_umi"] = log10_umi
     cell_attr["umi_per_gene"] = log10_umi / expressed_genes
     cell_attr["log10_umi_per_gene"] = npy.log10(cell_attr["umi_per_gene"])
     return cell_attr

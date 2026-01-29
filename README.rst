@@ -99,6 +99,15 @@ pytest -m benchmark --benchmark-only
 # Everything
 pytest
 
+Regenerate the R outputs to test again:
+
+.. code-block:: bash
+
+conda create -n pysct_test r-sctransform r-matrix -c conda-forge -y
+conda activate pysct_test
+Rscript /scripts/generate_reference.R
+
+
 =========
 CITATION
 =========
