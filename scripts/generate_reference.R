@@ -25,7 +25,10 @@ cat(sprintf("Matrix: %d genes x %d cells\n", nrow(matrix), ncol(matrix)))
 # Run sctransform with NO gene subsampling
 set.seed(42)
 vst_out <- vst(matrix, n_genes = NULL, method = "poisson", verbosity = 2)
+residuals_sample <- vst_out$y[1:500, ]
 
 # Save raw parameters (ALL genes)
 write.csv(vst_out$model_pars, "data/r_model_pars.csv")
 write.csv(vst_out$model_pars_fit, "data/r_model_pars_fit.csv")
+# Save out residuals
+write.csv(as.matrix(residuals_sample), "./data/r_residuals.csv")
