@@ -7,6 +7,7 @@ import warnings
 import numpy as npy
 import pandas as pd
 import statsmodels.discrete.discrete_model as dm
+from KDEpy import FFTKDE
 from joblib import Parallel, delayed
 from patsy import dmatrix
 from scipy import interpolate, sparse, stats
@@ -237,11 +238,11 @@ def get_model_params_allgene_glmgp(
     if use_offset:
         results = Parallel(n_jobs=threads, backend="multiprocessing", batch_size=500)(
             delayed(get_model_params_pergene_glmgp_offset)(row, coldata, log_umi)
-            for row in umi
+            for row in umi,
         )
     else:
         results = Parallel(n_jobs=threads, backend="multiprocessing", batch_size=500)(
-            delayed(get_model_params_pergene_glmgp)(row, coldata) for row in umi
+            delayed(get_model_params_pergene_glmgp)(row, coldata) for row in umi,
         )
     params_df = pd.DataFrame(results)
 
@@ -565,7 +566,7 @@ def vst(
         if not isinstance(umi, pd.DataFrame):
             raise RuntimeError(
                 "`gene_names` and `cell_names` are required when umi is not " +
-                "a dataframe"
+                "a dataframe",
             )
         else:
             gene_names = umi.index.tolist()
