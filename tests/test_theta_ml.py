@@ -1,7 +1,5 @@
 """
 Tests for theta_ml function comparing against R's sctransform implementation.
-
-R's limit=10 means 9 updates (loop runs for i in 1:10, but update happens BEFORE the check)
 """
 import numpy as np
 import pandas as pd
@@ -100,7 +98,8 @@ class TestThetaML:
 
         assert total_count > 0, "No genes were tested"
         assert match_rate >= 0.95, (
-            f"Match rate {match_rate:.1%} ({match_count}/{total_count}) is below 95% threshold. "
+            f"Match rate {match_rate:.1%} ({match_count}/{total_count}) " +
+            "is below 95% threshold. "
             f"Failed genes: {[r['gene'] for r in results if not r['match']]}"
         )
 

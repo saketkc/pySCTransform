@@ -12,7 +12,7 @@ from pysctransform.pysctransform import (
     is_outlier,
     row_gmean,
 )
-from tests.utils import pbmc3k_data
+
 
 @pytest.fixture(scope="session")
 def pbmc3k_filtered_for_regularization(pbmc3k_data):
@@ -57,14 +57,14 @@ def regularization_inputs(pbmc3k_filtered_for_regularization, r_raw_params):
 
     # Get indices preserving genes_step1 order
     genes_step1_indices = np.array(
-        [np.where(genes == g)[0][0] for g in genes_step1]
+        [np.where(genes == g)[0][0] for g in genes_step1],
     )
     genes_log10_gmean_step1 = genes_log10_gmean[genes_step1_indices]
 
     # Prepare model parameters
     model_parameters = r_raw_params.loc[genes_step1].copy()
     model_parameters['od_factor'] = np.log10(
-        1 + np.power(10, genes_log10_gmean_step1) / model_parameters['theta'].values
+        1 + np.power(10, genes_log10_gmean_step1) / model_parameters['theta'].values,
     )
     model_parameters = model_parameters.rename(columns={'(Intercept)': 'Intercept'})
 
@@ -73,7 +73,7 @@ def regularization_inputs(pbmc3k_filtered_for_regularization, r_raw_params):
     for col in model_parameters.columns:
         outliers_df[col] = is_outlier(
             model_parameters[col].values,
-            genes_log10_gmean_step1
+            genes_log10_gmean_step1,
         )
 
     non_outliers = outliers_df.sum(axis=1) == 0
@@ -98,7 +98,7 @@ def regularization_inputs(pbmc3k_filtered_for_regularization, r_raw_params):
 
 class TestStep2:
     def test_regularization_correlation(
-        self, regularization_inputs, r_fitted_params
+            self, regularization_inputs, r_fitted_params,
     ):
         """
         Test step 2 (regularization) using R's raw parameters as input.
@@ -108,7 +108,7 @@ class TestStep2:
         """
         print(f"\nR fitted parameters: {len(r_fitted_params)} genes")
         print(
-            f"Genes in step 1 (after outlier removal): " +
+            "Genes in step 1 (after outlier removal): " +
             "{len(regularization_inputs['genes_step1'])}",
         )
         print(f"Outliers removed: {regularization_inputs['n_outliers']}")
@@ -134,7 +134,7 @@ class TestStep2:
         print("=" * 75)
         print(
             f"{'Gene':<15} {'R_int':>12} {'Py_int':>12} "
-            f"{'R_theta':>12} {'Py_theta':>12} {'OK':>5}"
+            f"{'R_theta':>12} {'Py_theta':>12} {'OK':>5}",
         )
         print("-" * 75)
 
@@ -173,12 +173,12 @@ class TestStep2:
             status = "✓" if all_ok else "✗"
             print(
                 f"{gene:<15} {r_int:>12.4f} {py_int:>12.4f} "
-                f"{r_theta:>12.4f} {py_theta:>12.4f} {status:>5}"
+                f"{r_theta:>12.4f} {py_theta:>12.4f} {status:>5}",
             )
 
         # Summary statistics
         print("=" * 75)
-        print(f"\nSummary:")
+        print("\nSummary:")
         print(f"  Matched: {matches}/50 ({100 * matches / 50:.1f}%)")
         print(f"  Intercept mean abs diff: {np.mean(int_diffs):.4f}")
         finite_theta_diffs = [d for d in theta_diffs if np.isfinite(d)]

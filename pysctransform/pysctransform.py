@@ -238,11 +238,11 @@ def get_model_params_allgene_glmgp(
     if use_offset:
         results = Parallel(n_jobs=threads, backend="multiprocessing", batch_size=500)(
             delayed(get_model_params_pergene_glmgp_offset)(row, coldata, log_umi)
-            for row in umi,
+            for row in umi
         )
     else:
         results = Parallel(n_jobs=threads, backend="multiprocessing", batch_size=500)(
-            delayed(get_model_params_pergene_glmgp)(row, coldata) for row in umi,
+            delayed(get_model_params_pergene_glmgp)(row, coldata) for row in umi
         )
     params_df = pd.DataFrame(results)
 

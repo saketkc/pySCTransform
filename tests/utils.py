@@ -2,7 +2,6 @@
 import tarfile
 import urllib.request
 from pathlib import Path
-import pytest
 
 import numpy as np
 import pandas as pd
@@ -11,7 +10,8 @@ import scipy.io
 
 def download_pbmc3k(cache_dir: Path) -> tuple:
     """Download PBMC3k data from 10x Genomics."""
-    url = "https://cf.10xgenomics.com/samples/cell/pbmc3k/pbmc3k_filtered_gene_bc_matrices.tar.gz"
+    url = ("https://cf.10xgenomics.com/samples/cell/pbmc3k" +
+           "/pbmc3k_filtered_gene_bc_matrices.tar.gz")
     tar_path = cache_dir / "data.tar.gz"
     data_dir = cache_dir / "filtered_gene_bc_matrices" / "hg19"
 
@@ -20,7 +20,8 @@ def download_pbmc3k(cache_dir: Path) -> tuple:
         request = urllib.request.Request(
             url,
             headers={
-                'User-Agent': 'Mozilla/5.0 (Windows NT 4.51; Win64; x64) AppleWebKit/537.36'
+                'User-Agent':
+                    'Mozilla/5.0 (Windows NT 4.51; Win64; x64) AppleWebKit/537.36'
             },
         )
         with urllib.request.urlopen(request) as response:
@@ -39,7 +40,7 @@ def download_pbmc3k(cache_dir: Path) -> tuple:
 
 
 def filter_pbmc3k(
-    matrix, genes: list, cells: list, min_genes: int = 3, min_cells: int = 200
+        matrix, genes: list, cells: list, min_genes: int = 3, min_cells: int = 200,
 ) -> tuple:
     """Filter genes and cells by minimum counts."""
     gene_mask = np.array((matrix > 0).sum(axis=1)).flatten() >= min_genes
@@ -51,13 +52,9 @@ def filter_pbmc3k(
 
     return matrix, genes, cells
 
-@pytest.fixture(scope="session")
-def pbmc3k_data(tmp_path_factory):
-    cache_dir = tmp_path_factory.mktemp("pbmc3k_cache")
-    return get_pbmc3k_filtered(cache_dir)
 
 def get_pbmc3k_filtered(
-    cache_dir: Path, min_genes: int = 3, min_cells: int = 200
+        cache_dir: Path, min_genes: int = 3, min_cells: int = 200,
 ) -> tuple:
     """Download and filter PBMC3k data."""
     matrix, genes, cells = download_pbmc3k(cache_dir)
@@ -73,10 +70,10 @@ def load_r_reference(filepath: str, deduplicate: bool = True) -> pd.DataFrame:
 
 
 def compare_params(
-    py_value: float,
-    r_value: float,
-    atol: float = 0.001,
-    rtol: float | None = None,
+        py_value: float,
+        r_value: float,
+        atol: float = 0.001,
+        rtol: float | None = None,
 ) -> tuple[bool, float]:
     """
     Compare a Python parameter value against an R reference value.
@@ -111,7 +108,9 @@ def compare_params(
         return diff < atol, diff
 
 
-def compute_correlation(x: np.ndarray, y: np.ndarray, finite_only: bool = True) -> float:
+def compute_correlation(
+        x: np.ndarray, y: np.ndarray, finite_only: bool = True,
+) -> float:
     """
     Compute Pearson correlation between two arrays.
 

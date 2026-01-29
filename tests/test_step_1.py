@@ -14,7 +14,6 @@ from pysctransform.pysctransform import (
 from tests.utils import (
     compare_params,
     compute_correlation,
-    pbmc3k_data,
     load_r_reference,
     print_comparison_footer,
     print_comparison_header,

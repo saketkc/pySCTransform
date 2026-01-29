@@ -11,9 +11,7 @@ from patsy import dmatrix
 from pysctransform.pysctransform import (
     get_residuals,
     make_cell_attr,
-    row_gmean,
 )
-from tests.utils import pbmc3k_data
 
 
 @pytest.fixture(scope="session")
@@ -94,8 +92,8 @@ class TestStep3:
         print(f"\nR residuals shape: {r_residuals.shape}")
         print(
             f"Python input: {len(residual_inputs['genes'])} genes, "
-            f"{len(residual_inputs['cells'])} cells"
-            )
+            f"{len(residual_inputs['cells'])} cells",
+        )
 
         # Calculate Python residuals
         print("\nCalculating residuals...")
@@ -118,10 +116,10 @@ class TestStep3:
 
         # Find common genes and cells
         common_genes = list(
-            set(r_residuals.index) & set(py_residuals_df.index)
+            set(r_residuals.index) & set(py_residuals_df.index),
         )[:100]
         common_cells = list(
-            set(r_residuals.columns) & set(py_residuals_df.columns)
+            set(r_residuals.columns) & set(py_residuals_df.columns),
         )[:100]
 
         print(f"Comparing {len(common_genes)} genes x {len(common_cells)} cells")
@@ -130,8 +128,8 @@ class TestStep3:
         print("\n" + "=" * 80)
         print(
             f"{'Gene':<15} {'R_mean':>10} {'Py_mean':>10} {'R_std':>10} "
-            f"{'Py_std':>10} {'Corr':>10} {'OK':>5}"
-            )
+            f"{'Py_std':>10} {'Corr':>10} {'OK':>5}",
+        )
         print("-" * 80)
 
         correlations = []
@@ -158,13 +156,13 @@ class TestStep3:
 
             print(
                 f"{gene:<15} {r_mean:>10.4f} {py_mean:>10.4f} "
-                f"{r_std:>10.4f} {py_std:>10.4f} {corr:>10.4f} {status:>5}"
-                )
+                f"{r_std:>10.4f} {py_std:>10.4f} {corr:>10.4f} {status:>5}",
+            )
 
         print("=" * 80)
 
         # Summary statistics
-        print(f"\nSummary:")
+        print("\nSummary:")
         print(f"  Mean correlation: {np.mean(correlations):.4f}")
         print(f"  Min correlation: {np.min(correlations):.4f}")
         print(f"  Mean abs diff (means): {np.mean(mean_diffs):.4f}")
@@ -199,14 +197,16 @@ class TestStep3:
 
         expected_clip = np.sqrt(n_cells)
         assert np.max(residuals_default) <= expected_clip + 1e-6, \
-            f"Default clipping failed: max={np.max(residuals_default)}, expected<={expected_clip}"
+            (f"Default clipping failed: max={np.max(residuals_default)}, " +
+             f"expected<={expected_clip}")
         assert np.min(residuals_default) >= -expected_clip - 1e-6, \
-            f"Default clipping failed: min={np.min(residuals_default)}, expected>={-expected_clip}"
+            (f"Default clipping failed: min={np.min(residuals_default)}, " +
+             f"expected>={-expected_clip}")
 
         print(
             f"Default clipping (sqrt(n_cells)={expected_clip:.2f}): "
-            f"range=[{np.min(residuals_default):.2f}, {np.max(residuals_default):.2f}]"
-            )
+            f"range=[{np.min(residuals_default):.2f}, {np.max(residuals_default):.2f}]",
+        )
 
         # Test Seurat clipping
         residuals_seurat = get_residuals(
@@ -225,8 +225,8 @@ class TestStep3:
 
         print(
             f"Seurat clipping (sqrt(n_cells/30)={expected_clip_seurat:.2f}): "
-            f"range=[{np.min(residuals_seurat):.2f}, {np.max(residuals_seurat):.2f}]"
-            )
+            f"range=[{np.min(residuals_seurat):.2f}, {np.max(residuals_seurat):.2f}]",
+        )
 
         print("\n✓ Clipping test passed!")
 
@@ -245,15 +245,15 @@ class TestStep3:
         gene_means = np.mean(residuals, axis=1)
         gene_vars = np.var(residuals, axis=1)
 
-        print(f"\nResidual statistics:")
+        print("\nResidual statistics:")
         print(
             f"  Gene means: min={np.min(gene_means):.4f}, "
-            f"max={np.max(gene_means):.4f}, median={np.median(gene_means):.4f}"
-            )
+            f"max={np.max(gene_means):.4f}, median={np.median(gene_means):.4f}",
+        )
         print(
             f"  Gene variances: min={np.min(gene_vars):.4f}, "
-            f"max={np.max(gene_vars):.4f}, median={np.median(gene_vars):.4f}"
-            )
+            f"max={np.max(gene_vars):.4f}, median={np.median(gene_vars):.4f}",
+        )
 
         # Most genes should have mean close to 0
         assert np.median(np.abs(gene_means)) < 0.5, \
