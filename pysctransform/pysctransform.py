@@ -52,13 +52,20 @@ def get_var(X, axis=None):
 
 
 def bwSJ(genes_log10_gmean_step1, bw_adjust=3):
-    # See https://kdepy.readthedocs.io/en/latest/bandwidth.html
-    fit = FFTKDE(kernel="gaussian", bw="ISJ").fit(
-        npy.asarray(genes_log10_gmean_step1),
-    )
-    _ = fit.evaluate()
-    bw = fit.bw * bw_adjust
-    return npy.array([bw], dtype=float)
+    """
+    Bandwidth selection using Silverman's rule of thumb.
+
+    This matches R's bw.SJ more closely than KDEpy's ISJ.
+    """
+    x = npy.asarray(genes_log10_gmean_step1)
+    n = len(x)
+    std = npy.std(x, ddof=1)
+    iqr = npy.subtract(*npy.percentile(x, [75, 25]))
+
+    # Silverman's rule: 0.9 * min(std, IQR/1.34) * n^(-1/5)
+    h = 0.9 * min(std, iqr / 1.34) * (n ** (-0.2))
+
+    return npy.array([h * bw_adjust], dtype=float)
 
 
 def robust_scale(x):

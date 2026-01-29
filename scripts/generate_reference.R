@@ -27,5 +27,5 @@ set.seed(42)
 vst_out <- vst(matrix, n_genes = NULL, method = "poisson", verbosity = 2)
 
 # Save raw parameters (ALL genes)
-write.csv(vst_out$model_pars, "data/r_model_pars_all.csv")
-cat(sprintf("Saved %d genes to r_model_pars_all.csv\n", nrow(vst_out$model_pars)))
+write.csv(vst_out$model_pars, "data/r_model_pars.csv")
+write.csv(vst_out$model_pars_fit, "data/r_model_pars_fit.csv")
