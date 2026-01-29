@@ -59,7 +59,7 @@ def is_outlier_naive(x, snr_threshold=25):
 def get_var(X, axis=None):
     """Calculate variance for sparse or dense matrices."""
     if sparse.issparse(X):
-        mean, var = mean_variance_axis(X, axis)
+        _, var = mean_variance_axis(X, axis)
         return var
     else:
         return npy.var(X, axis=axis)
