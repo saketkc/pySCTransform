@@ -7,7 +7,6 @@ import warnings
 import numpy as npy
 import pandas as pd
 import statsmodels.discrete.discrete_model as dm
-from KDEpy import FFTKDE
 from joblib import Parallel, delayed
 from patsy import dmatrix
 from scipy import interpolate, sparse, stats
