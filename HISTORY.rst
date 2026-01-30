@@ -6,12 +6,13 @@ History
 
 Bugs:
 * Fix for "TypeError: unsupported operand type(s) for -: 'IntVector' and 'int'" `#8 <https://github.com/saketkc/pySCTransform/pull/8>`_
+* Fix broken syntax in GLM design matrix code generation - where each batch can have its own intercept and slope.
+* Fix fit.py returning a single mu value - generating incorrect theta estimates,
 * Fixed theta_ml to match scTransform implementation - 9 iterations by default,
-* Silverman's bandwidth selection,
-
+* Use Silverman's bandwidth selection to be more like R scTransform.
 
 Features:
-* Faster implementation of robust_scale_binned - ~25%.
+* 25% faster implementation of robust_scale_binned.
 * Add "log_umi" attribute to match R's.
 * Handle sparse matrix in row_gmean, get_model_params_allgene_glmgp and pearson_residual.
 * Add cell_attr_extra and batch_var support.

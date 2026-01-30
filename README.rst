@@ -103,7 +103,7 @@ Regenerate the R outputs to test again:
 
 .. code-block:: bash
 
-conda create -n pysct_test r-sctransform r-matrix -c conda-forge -y
+conda create -n pysct_test -c conda-forge r-sctransform==0.4.3 r-matrix==1.7_4 -y
 conda activate pysct_test
 Rscript /scripts/generate_reference.R
 
