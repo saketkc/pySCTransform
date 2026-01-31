@@ -41,7 +41,7 @@ class TestThetaML:
             self, pbmc3k_with_model, r_reference_data,
     ):
         """
-        Verify that theta_ml with limit=9 matches R's sctransform output.
+        Verify that theta_ml with limit=10 matches R's sctransform output.
 
         R's limit=10 means 9 updates because the loop runs for i in 1:10,
         but the update happens BEFORE the convergence check.
@@ -68,7 +68,7 @@ class TestThetaML:
                 continue
 
             r_theta = r_raw.loc[gene, 'theta']
-            py_theta = theta_ml(y, mu, limit=9)
+            py_theta = theta_ml(y, mu, limit=10)
 
             # Calculate difference
             if np.isinf(py_theta) and np.isinf(r_theta):
@@ -118,7 +118,7 @@ class TestThetaML:
         fit = model.fit(disp=False)
         mu = fit.predict()
 
-        theta = theta_ml(y, mu, limit=9)
+        theta = theta_ml(y, mu)
 
         assert theta > 0, f"theta_ml should return positive value, got {theta}"
 
@@ -128,7 +128,7 @@ class TestThetaML:
         y = np.random.negative_binomial(n=5, p=0.5, size=100)
         mu = np.full(100, y.mean())
 
-        theta = theta_ml(y, mu, limit=9)
+        theta = theta_ml(y, mu)
 
         assert np.isfinite(theta) or np.isinf(theta), "theta should be finite or inf"
         assert theta > 0, "theta should be positive"

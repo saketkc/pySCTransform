@@ -106,10 +106,10 @@ def estimate_mu_poisson(y, model_matrix):
     return {"coef": fit.params, "mu": mu}
 
 
-def theta_ml(y, mu, limit=9, eps=1e-4):
+def theta_ml(y, mu, limit=10, eps=1e-4):
     """
-    Maximum likelihood estimation of theta for negative binomial - matching R's
-    MASS::theta.ml exactly (9 in R).
+    Maximum likelihood estimation of theta for negative binomial.
+    Matches R's MASS::theta.ml.
 
     Parameters
     ----------
@@ -133,14 +133,14 @@ def theta_ml(y, mu, limit=9, eps=1e-4):
 
     def score(th):
         return npy.sum(
-            digamma(th + y) - digamma(th) + npy.log(th) + 1 - npy.log(th + mu) - (
-                    y + th) / (mu + th),
+            digamma(th + y) - digamma(th) + npy.log(th) + 1
+            - npy.log(th + mu) - (y + th) / (mu + th),
         )
 
     def info(th):
         return npy.sum(
-            -polygamma(1, th + y) + polygamma(1, th) - 1 / th + 2 / (mu + th) - (
-                    y + th) / (mu + th) ** 2,
+            -polygamma(1, th + y) + polygamma(1, th) - 1 / th
+            + 2 / (mu + th) - (y + th) / (mu + th) ** 2,
         )
 
     # Initial estimate
@@ -149,17 +149,18 @@ def theta_ml(y, mu, limit=9, eps=1e-4):
     if not npy.isfinite(t0) or t0 <= 0:
         return npy.inf
 
-    # R's theta.ml.
-    for i in range(limit):
+    # Match R's implementation
+    del_ = 1.0
+
+    for _ in range(1, limit):
+        if abs(del_) <= eps:
+            break
         t0 = abs(t0)
         i0 = info(t0)
-        s0 = score(t0)
         if i0 == 0:
             break
-        delta = s0 / i0
-        t0 = t0 + delta
-        if abs(delta) < eps:
-            break
+        del_ = score(t0) / i0
+        t0 = t0 + del_
 
     if t0 < 0:
         return npy.inf

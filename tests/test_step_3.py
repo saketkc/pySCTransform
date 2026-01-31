@@ -114,11 +114,11 @@ class TestStep3:
 
         print(f"Python residuals shape: {py_residuals_df.shape}")
 
-        # Find common genes and cells
-        common_genes = list(
+        # Find common genes and cells - convert to SORTED LISTS for consistency
+        common_genes = sorted(
             set(r_residuals.index) & set(py_residuals_df.index),
         )[:100]
-        common_cells = list(
+        common_cells = sorted(
             set(r_residuals.columns) & set(py_residuals_df.columns),
         )[:100]
 
@@ -168,9 +168,16 @@ class TestStep3:
         print(f"  Mean abs diff (means): {np.mean(mean_diffs):.4f}")
         print(f"  Mean abs diff (stds): {np.mean(std_diffs):.4f}")
 
-        # Overall correlation (flatten and compare)
-        r_flat = r_residuals.loc[common_genes, common_cells].values.flatten()
-        py_flat = py_residuals_df.loc[common_genes, common_cells].values.flatten()
+        # Overall correlation (flatten and compare) - use same common_genes/cells
+        r_subset = r_residuals.loc[common_genes, common_cells]
+        py_subset = py_residuals_df.loc[common_genes, common_cells]
+
+        # Verify shapes match before flattening
+        assert r_subset.shape == py_subset.shape, \
+            f"Shape mismatch: R={r_subset.shape}, Py={py_subset.shape}"
+
+        r_flat = r_subset.values.flatten()
+        py_flat = py_subset.values.flatten()
         overall_corr = np.corrcoef(r_flat, py_flat)[0, 1]
         print(f"  Overall correlation: {overall_corr:.4f}")
 

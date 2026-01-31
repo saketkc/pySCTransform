@@ -51,19 +51,20 @@ def get_var(X, axis=None):
         return npy.var(X, axis=axis)
 
 
-def bwSJ(genes_log10_gmean_step1, bw_adjust=3):
+def bw_silverman(x, bw_adjust=3):
     """
     Bandwidth selection using Silverman's rule of thumb.
 
     This matches R's bw.SJ more closely than KDEpy's ISJ.
     """
-    x = npy.asarray(genes_log10_gmean_step1)
+    x = npy.asarray(x)
     n = len(x)
     std = npy.std(x, ddof=1)
-    iqr = npy.subtract(*npy.percentile(x, [75, 25]))
+    iqr = npy.percentile(x, 75) - npy.percentile(x, 25)
 
     # Silverman's rule: 0.9 * min(std, IQR/1.34) * n^(-1/5)
-    h = 0.9 * min(std, iqr / 1.34) * (n ** (-0.2))
+    a = min(std, iqr / 1.34) if iqr > 0 else std
+    h = 0.9 * a * (n ** -0.2)
 
     return npy.array([h * bw_adjust], dtype=float)
 
@@ -88,7 +89,7 @@ def robust_scale_binned(y, x, breaks):
 
 
 def is_outlier(y, x, th=10):
-    bin_width = (npy.nanmax(x) - npy.nanmin(x)) * bwSJ(x, bw_adjust=1 / 2)
+    bin_width = (npy.nanmax(x) - npy.nanmin(x)) * bw_silverman(x, bw_adjust=1 / 2)
     eps = npy.finfo(float).eps * 10
     bin_width = bin_width[0]
     breaks1 = npy.arange(
@@ -347,7 +348,7 @@ def get_regularized_params(
     x_points_df["max_gene_log10_gmean_step1"] = npy.nanmax(genes_log10_gmean_step1)
     x_points_df["x_points"] = x_points_df[
         ["x_points", "max_gene_log10_gmean_step1"]
-    ].min(1)
+    ].min(axis=1)
     x_points = x_points_df["x_points"].values
     for column in model_parameters.columns:
         if column == "theta":
@@ -360,7 +361,7 @@ def get_regularized_params(
             index = model_parameters_fit.index.values[npy.asarray(params["order"]) - 1]
             model_parameters_fit.loc[index, column] = params["smoothed"]
         else:
-            bw = bwSJ(genes_log10_gmean_step1, bw_adjust=bw_adjust)  # .values)
+            bw = bw_silverman(genes_log10_gmean_step1, bw_adjust=bw_adjust)  # .values)
             reg = KernelReg(
                 endog=endog, exog=exog_fit, var_type="c", reg_type="ll", bw=bw,
             )
