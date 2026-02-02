@@ -400,7 +400,7 @@ def pearson_residual(y, mu, theta, min_var=-npy.inf):
     # Handle sparse y more efficiently
     if sparse.issparse(y):
         # Convert to dense only once, not implicitly multiple times
-        y_dense = npy.asarray(y.todense())
+        y_dense = y.toarray()
         pearson_residuals = (y_dense - mu) / npy.sqrt(variance)
     else:
         pearson_residuals = (y - mu) / npy.sqrt(variance)
