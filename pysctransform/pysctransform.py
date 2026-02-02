@@ -409,13 +409,18 @@ def pearson_residual(y, mu, theta, min_var=-npy.inf):
 
 
 def deviance_residual(y, mu, theta, weight=1):
-    theta = npy.tile(theta.reshape(-1, 1), y.shape[1])
-    L = npy.multiply((y + theta), npy.log((y + theta) / (mu + theta)))
-    log_mu = npy.log(mu)
-    log_y = npy.log(y.maximum(1).todense())
-    r = npy.multiply(y.todense(), log_y - log_mu)
-    r = 2 * weight * (r - L)
-    return npy.multiply(npy.sqrt(r), npy.sign(y - mu))
+    if sparse.issparse(y):
+        y = y.toarray()
+    theta = theta.reshape(-1, 1)
+    y_safe = npy.maximum(y, 1)
+
+    # Unit deviance: d_i = 2 * [y*log(y/μ) - (y+θ)*log((y+θ)/(μ+θ))]
+    unit_deviance = 2 * (
+            y * npy.log(y_safe / mu)
+            - (y + theta) * npy.log((y + theta) / (mu + theta))
+    )
+
+    return npy.sqrt(weight * unit_deviance) * npy.sign(y - mu)
 
 
 def get_residuals(
