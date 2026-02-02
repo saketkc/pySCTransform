@@ -507,10 +507,14 @@ def get_downsampling_params(n_cells, n_genes, total_cells, total_genes):
 
     Returns
     -------
-        - downsample_cells: bool
-        - downsample_genes: bool
-        - n_cells: int (clamped)
-        - n_genes: int (clamped)
+    downsample_cells : bool
+        Whether cells will be downsampled
+    downsample_genes : bool
+        Whether genes will be downsampled
+    n_cells : int
+        Clamped number of cells to use
+    n_genes : int
+        Clamped number of genes to use
     """
     downsample_cells = n_cells is not None and n_cells < total_cells
     downsample_genes = n_genes is not None and n_genes < total_genes
