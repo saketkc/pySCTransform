@@ -81,6 +81,7 @@ def residual_inputs(pbmc3k_filtered_for_residuals, r_fitted_params):
         'model_parameters_fit': model_parameters_fit,
     }
 
+
 @pytest.mark.network
 class TestStep3:
     def test_residuals_calculation(self, residual_inputs, r_residuals):

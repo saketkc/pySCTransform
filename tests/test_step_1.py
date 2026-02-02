@@ -37,6 +37,7 @@ def pbmc3k_with_model(pbmc3k_data):
 def r_reference_data():
     return load_r_reference("./data/r_model_pars.csv")
 
+
 @pytest.mark.network
 class TestStep1:
     def test_step1_50_genes(self, pbmc3k_with_model, r_reference_data):
@@ -119,7 +120,7 @@ class TestStep1:
             print(
                 f"{gene:<15} {r_int:>10.4f} {py_int:>10.4f} "
                 f"{r_slope:>10.4f} {py_slope:>10.4f} "
-                f"{r_theta:>10.4f} {py_theta:>10.4f} {status:>5}"
+                f"{r_theta:>10.4f} {py_theta:>10.4f} {status:>5}",
             )
 
         print_comparison_footer()
