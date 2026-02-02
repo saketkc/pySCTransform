@@ -109,7 +109,7 @@ class TestStep2:
         print(f"\nR fitted parameters: {len(r_fitted_params)} genes")
         print(
             "Genes in step 1 (after outlier removal): " +
-            "{len(regularization_inputs['genes_step1'])}",
+            f"{len(regularization_inputs['genes_step1'])}",
         )
         print(f"Outliers removed: {regularization_inputs['n_outliers']}")
 
