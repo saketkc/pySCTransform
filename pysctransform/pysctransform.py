@@ -231,10 +231,7 @@ def get_model_params_pergene_glmgp_offset(gene_umi, coldata, log_umi, design="~ 
     return params
 
 
-def get_model_params_allgene_glmgp(
-        umi, coldata, bin_size=500, threads=4, use_offset=False, verbosity=0,
-):
-    results = []
+def get_model_params_allgene_glmgp(umi, coldata, threads=4, use_offset=False):
     log_umi = npy.log(npy.ravel(umi.sum(0)))
     if use_offset:
         results = Parallel(n_jobs=threads, backend="multiprocessing", batch_size=500)(
@@ -484,7 +481,6 @@ def correct(residuals, cell_attr, latent_var, model_parameters_fit, umi):
     coefficients = model_parameters_fit[non_theta_columns]
     theta = model_parameters_fit["theta"].values
 
-    mu = npy.exp(coefficients.dot(model_matrix.T))
     mu = npy.exp(npy.dot(coefficients.values, model_matrix.T))
     variance = mu + npy.divide(mu ** 2, npy.tile(theta.reshape(-1, 1), mu.shape[1]))
     corrected_data = mu + residuals.values * npy.sqrt(variance)
@@ -492,6 +488,45 @@ def correct(residuals, cell_attr, latent_var, model_parameters_fit, umi):
     corrected_counts = sparse.csr_matrix(corrected_data.astype(int))
 
     return corrected_counts
+
+
+def get_downsampling_params(n_cells, n_genes, total_cells, total_genes):
+    """
+    Determine whether to downsample and return clamped values.
+
+    Parameters
+    ----------
+    n_cells : int or None
+        Requested number of cells (None means use all)
+    n_genes : int or None
+        Requested number of genes (None means use all)
+    total_cells : int
+        Total cells in the dataset
+    total_genes : int
+        Total genes in the dataset
+
+    Returns
+    -------
+    dict with keys:
+        - downsample_cells: bool
+        - downsample_genes: bool
+        - n_cells: int (clamped)
+        - n_genes: int (clamped)
+    """
+    downsample_cells = n_cells is not None and n_cells < total_cells
+    downsample_genes = n_genes is not None and n_genes < total_genes
+
+    if n_cells is None:
+        n_cells = total_cells
+    else:
+        n_cells = min(n_cells, total_cells)
+
+    if n_genes is None:
+        n_genes = total_genes
+    else:
+        n_genes = min(n_genes, total_genes)
+
+    return downsample_cells, downsample_genes, n_cells, n_genes
 
 
 def vst(
@@ -557,12 +592,10 @@ def vst(
                Print verbose messages
     """
     umi = umi.copy()
-    if n_cells is None:
-        n_cells = umi.shape[1]
-    if n_genes is None:
-        n_genes = umi.shape[0]
-    n_cells = min(n_cells, umi.shape[1])
-    n_genes = min(n_genes, umi.shape[0])
+
+    downsample_cells, downsample_genes, n_cells, n_genes = (
+        get_downsampling_params(n_cells, n_genes, umi.shape[1], umi.shape[0]))
+
     if gene_names is None:
         if not isinstance(umi, pd.DataFrame):
             raise RuntimeError(
@@ -573,7 +606,6 @@ def vst(
             gene_names = umi.index.tolist()
             cell_names = umi.columns.tolist()
             umi = csr_matrix(umi.values)
-            # umi.to_numpy()
     if cell_names is None:
         cell_names = [x for x in range(umi.shape[1])]
 
@@ -593,8 +625,8 @@ def vst(
     genes_log10_gmean = npy.log10(row_gmean(umi, gmean_eps=gmean_eps))
     genes_log10_amean = npy.log10(npy.ravel(umi.mean(1)))
 
-    if n_cells is None and n_cells < umi.shape[1]:
-        # downsample cells to speed up the first step
+    # downsample cells to speed up the first step
+    if downsample_cells:
         cells_step1_index = npy.random.choice(
             a=npy.arange(len(cell_names), dtype=int), size=n_cells, replace=False,
         )
@@ -618,7 +650,6 @@ def vst(
         )
         umi_step1 = umi[:, cells_step1_index]
     else:
-        cells_step1_index = npy.arange(len(cell_names), dtype=int)
         cells_step1 = cell_names
         genes_step1 = genes
         genes_log10_gmean_step1 = genes_log10_gmean
@@ -626,33 +657,31 @@ def vst(
         umi_step1 = umi
 
     data_step1 = cell_attr.loc[cells_step1]
-    if (n_genes is not None) and (n_genes < len(genes_step1)):
-        # density-sample genes to speed up the first step
+    # density-sample genes to speed up the first step
+    if downsample_genes and n_genes < len(genes_step1):
         sampling_prob = dds(genes_log10_gmean_step1)
-
         genes_step1_index = npy.random.choice(
             a=npy.arange(len(genes_step1)), size=n_genes, replace=False,
             p=sampling_prob,
         )
-        genes_step1 = gene_names[genes_step1_index]
-        umi_step1 = umi_step1[genes_step1_index, :]  # [:, cells_step1_index]
+        genes_step1 = genes_step1[genes_step1_index]
+        umi_step1 = umi_step1[genes_step1_index, :]
         genes_log10_gmean_step1 = npy.log10(
             row_gmean(umi_step1, gmean_eps=gmean_eps),
         )
         genes_log10_amean_step1 = npy.log10(umi_step1.mean(1))
 
     if method == "offset":
-        cells_step1_index = npy.arange(len(cell_names), dtype=int)
-        cells_step1 = cell_names
         genes_step1 = genes
         genes_log10_gmean_step1 = genes_log10_gmean
         genes_log10_amean_step1 = genes_log10_amean
         umi_step1 = umi
-    # Step 1: Estimate theta
 
+    # Step 1: Estimate theta
     if verbosity:
         print("Running Step1")
     start = time.time()
+
     if batch_var is None:
         model_matrix = dmatrix(" + ".join(latent_var), data_step1)
     else:
@@ -672,8 +701,8 @@ def vst(
         useR = True
     elif method == "fix-slope":
         model_parameters = get_model_params_allgene_glmgp(
-            umi_step1, data_step1, use_offset=True,
-        )
+            umi_step1, data_step1, use_offset=True
+            )
         model_parameters.index = genes_step1
         useR = True
     elif method in ["theta_ml", "theta_lbfgs", "alpha_lbfgs"]:
@@ -714,11 +743,12 @@ def vst(
     step1_time = npy.ceil(end - start)
     if verbosity:
         print("Step1 done. Took {} seconds.".format(npy.ceil(end - start)))
-    # Step 2: Do regularization
 
+    # Step 2: Do regularization
     if verbosity:
         print("Running Step2")
     start = time.time()
+
     genes_log10_gmean_step1_to_return = genes_log10_gmean_step1.copy()
     genes_log10_amean_step1_to_return = genes_log10_amean_step1.copy()
     outliers_df = pd.DataFrame(index=genes_step1)
@@ -781,8 +811,8 @@ def vst(
     # Step 3: Calculate residuals
     if verbosity:
         print("Running Step3")
-
     start = time.time()
+
     residuals = pd.DataFrame(
         get_residuals(umi, model_matrix, model_parameters_fit, residual_type),
     )

@@ -41,10 +41,7 @@ class TestThetaML:
             self, pbmc3k_with_model, r_reference_data,
     ):
         """
-        Verify that theta_ml with limit=10 matches R's sctransform output.
-
-        R's limit=10 means 9 updates because the loop runs for i in 1:10,
-        but the update happens BEFORE the convergence check.
+        Verify that theta_ml with defaults matches R's sctransform output.
         """
         matrix, genes, cells, design_matrix = pbmc3k_with_model
         r_raw = r_reference_data
@@ -68,7 +65,7 @@ class TestThetaML:
                 continue
 
             r_theta = r_raw.loc[gene, 'theta']
-            py_theta = theta_ml(y, mu, limit=10)
+            py_theta = theta_ml(y, mu)
 
             # Calculate difference
             if np.isinf(py_theta) and np.isinf(r_theta):

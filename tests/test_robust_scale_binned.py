@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from pysctransform.pysctransform import robust_scale_binned  # adjust import
+from pysctransform.pysctransform import robust_scale_binned
 
 
 @pytest.fixture
@@ -49,13 +49,12 @@ class TestRobustScaleBinned:
         )
         assert not np.isnan(result).any()
 
-
-@pytest.mark.benchmark
-def test_robust_scale_binned_performance(sample_data, benchmark):
-    result = benchmark(
-        robust_scale_binned,
-        sample_data['y'],
-        sample_data['x'],
-        sample_data['breaks'],
-    )
-    assert len(result) == len(sample_data['y'])
+    @pytest.mark.benchmark
+    def test_robust_scale_binned_performance(self, sample_data, benchmark):
+        result = benchmark(
+            robust_scale_binned,
+            sample_data['y'],
+            sample_data['x'],
+            sample_data['breaks'],
+        )
+        assert len(result) == len(sample_data['y'])
