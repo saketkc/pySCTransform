@@ -270,9 +270,9 @@ def get_model_params_allgene(
         feed_list = []
         for i in range(umi.shape[0]):
             if is_sparse:
-                row = npy.asarray(umi[i].todense()).reshape((-1, 1))
+                row = npy.asarray(umi[i, :].todense()).reshape((-1, 1))
             else:
-                row = npy.asarray(umi[i]).reshape((-1, 1))
+                row = npy.asarray(umi[i, :]).reshape((-1, 1))
             feed_list.append(
                 (
                     row,
@@ -302,10 +302,6 @@ def get_model_params_allgene(
 
 
 def dds(genes_log10_gmean_step1, grid_points=2 ** 10):
-    # density dependent downsampling
-    # print(genes_log10_gmean_step1.shape)
-    # if genes_log10_gmean_step1.ndim <2:
-    #    genes_log10_gmean_step1 = genes_log10_gmean_step1[:, npy.newaxis]
     x, y = (
         FFTKDE(kernel="gaussian", bw="silverman")
         .fit(npy.asarray(genes_log10_gmean_step1))
@@ -575,6 +571,10 @@ def vst(
              Number of genes to use for estimating parameters in Step1; default is 2000
     threads: int
              Number of threads to use (caveat: higher threads require higher memory)
+    method: string
+            Method for estimating model parameters. Options:
+            - "theta_ml" (default): Maximum likelihood estimation of theta using
+            Poisson regression for mu, then theta_ml for overdispersion
     theta_given: int
                  Used only when method == "offset", for fixing the value of inverse
                  overdispersion parameter following Lause et al. (2021) offset
@@ -636,24 +636,19 @@ def vst(
             a=npy.arange(len(cell_names), dtype=int), size=n_cells, replace=False,
         )
         cells_step1 = cell_names[cells_step1_index]
-        genes_cell_count_step1 = (umi[:, cells_step1_index] > 0).sum(1)
-        genes_step1 = genes[genes_cell_count_step1 >= min_cells]
+        umi_step1 = umi[:, cells_step1_index]
+
+        genes_cell_count_step1 = npy.asarray((umi_step1 > 0).sum(1)).ravel()
+        genes_step1_mask = genes_cell_count_step1 >= min_cells
+        genes_step1_index = npy.where(genes_step1_mask)[0]
+        genes_step1 = genes[genes_step1_mask]
+        umi_step1 = umi_step1[genes_step1_index, :]
         genes_log10_gmean_step1 = npy.log10(
-            row_gmean(
-                umi[
-                    genes_step1,
-                ],
-                gmean_eps=gmean_eps,
-            ),
+            row_gmean(umi_step1, gmean_eps=gmean_eps),
         )
         genes_log10_amean_step1 = npy.log10(
-            npy.ravel(
-                umi[
-                    genes_step1,
-                ].mean(1),
-            ),
+            npy.ravel(umi_step1.mean(1)),
         )
-        umi_step1 = umi[:, cells_step1_index]
     else:
         cells_step1 = cell_names
         genes_step1 = genes
@@ -674,7 +669,7 @@ def vst(
         genes_log10_gmean_step1 = npy.log10(
             row_gmean(umi_step1, gmean_eps=gmean_eps),
         )
-        genes_log10_amean_step1 = npy.log10(umi_step1.mean(1))
+        genes_log10_amean_step1 = npy.log10(npy.ravel(umi_step1.mean(1)))
 
     if method == "offset":
         genes_step1 = genes
@@ -779,8 +774,8 @@ def vst(
         )
 
     model_parameters_to_return = model_parameters.copy()
-    non_outliers = outliers_df.sum(1) == 0
-    outliers = outliers_df.sum(1) > 0
+    non_outliers = (outliers_df.sum(1) == 0).values
+    outliers = ~non_outliers
     if verbosity:
         print("Total outliers: {}".format(npy.sum(outliers)))
 
@@ -921,6 +916,10 @@ def SCTransform(
                 if set to 'v2' fixes slope and excludes non-poisson genes
                 Requires rpy2 and glmGamPoi to be installed. This will
                 automatically set method='fix-slope'
+    method: string
+            Method for estimating model parameters. Options:
+            - "theta_ml" (default): Maximum likelihood estimation of theta using
+            Poisson regression for mu, then theta_ml for overdispersion
 
     n_cells: int
              Number of cells to use for estimating parameters in Step1: default is 5000
@@ -939,7 +938,6 @@ def SCTransform(
     """
     adata = adata.copy()
     exclude_poisson = False
-    method = "theta_ml"
     cell_attr_extra = None
     if batch_var is not None:
         cell_attr_extra = adata.obs[[batch_var]]
