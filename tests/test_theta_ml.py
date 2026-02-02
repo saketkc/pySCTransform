@@ -35,6 +35,7 @@ def pbmc3k_with_model(pbmc3k_data):
     return matrix, genes, cells, design_matrix
 
 
+@pytest.mark.network
 class TestThetaML:
 
     def test_theta_ml_matches_r_implementation(
@@ -95,9 +96,9 @@ class TestThetaML:
 
         assert total_count > 0, "No genes were tested"
         assert match_rate >= 0.95, (
-            f"Match rate {match_rate:.1%} ({match_count}/{total_count}) " +
-            "is below 95% threshold. "
-            f"Failed genes: {[r['gene'] for r in results if not r['match']]}"
+                f"Match rate {match_rate:.1%} ({match_count}/{total_count}) " +
+                "is below 95% threshold. "
+                f"Failed genes: {[r['gene'] for r in results if not r['match']]}"
         )
 
     @pytest.mark.parametrize("gene_idx", [0, 10, 50, 100])

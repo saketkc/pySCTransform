@@ -95,7 +95,7 @@ def regularization_inputs(pbmc3k_filtered_for_regularization, r_raw_params):
         'n_outliers': (~non_outliers).sum(),
     }
 
-
+@pytest.mark.network
 class TestStep2:
     def test_regularization_correlation(
             self, regularization_inputs, r_fitted_params,

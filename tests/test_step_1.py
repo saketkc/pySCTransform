@@ -37,7 +37,7 @@ def pbmc3k_with_model(pbmc3k_data):
 def r_reference_data():
     return load_r_reference("./data/r_model_pars.csv")
 
-
+@pytest.mark.network
 class TestStep1:
     def test_step1_50_genes(self, pbmc3k_with_model, r_reference_data):
         """
