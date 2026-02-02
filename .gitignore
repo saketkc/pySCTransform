@@ -170,5 +170,3 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
-# Ignore data directory
-data/samples
