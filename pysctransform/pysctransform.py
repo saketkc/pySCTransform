@@ -233,14 +233,16 @@ def get_model_params_pergene_glmgp_offset(gene_umi, coldata, log_umi, design="~ 
 
 def get_model_params_allgene_glmgp(umi, coldata, threads=4, use_offset=False):
     log_umi = npy.log(npy.ravel(umi.sum(0)))
+    n_genes = umi.shape[0]
     if use_offset:
         results = Parallel(n_jobs=threads, backend="multiprocessing", batch_size=500)(
-            delayed(get_model_params_pergene_glmgp_offset)(row, coldata, log_umi)
-            for row in umi
+            delayed(get_model_params_pergene_glmgp_offset)(umi[i, :], coldata, log_umi)
+            for i in range(n_genes)
         )
     else:
         results = Parallel(n_jobs=threads, backend="multiprocessing", batch_size=500)(
-            delayed(get_model_params_pergene_glmgp)(row, coldata) for row in umi
+            delayed(get_model_params_pergene_glmgp)(umi[i, :], coldata)
+            for i in range(n_genes)
         )
     params_df = pd.DataFrame(results)
 
