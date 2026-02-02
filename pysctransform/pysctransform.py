@@ -507,7 +507,6 @@ def get_downsampling_params(n_cells, n_genes, total_cells, total_genes):
 
     Returns
     -------
-    dict with keys:
         - downsample_cells: bool
         - downsample_genes: bool
         - n_cells: int (clamped)
