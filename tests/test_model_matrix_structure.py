@@ -1,5 +1,3 @@
-# In tests/test_model_formula.py
-
 import numpy as np
 import pandas as pd
 import pytest
