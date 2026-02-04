@@ -8,7 +8,7 @@ import pytest
 from patsy import dmatrix
 
 from pysctransform.pysctransform import (
-    get_model_params_pergene,
+    get_model_params_per_gene,
     make_cell_attr,
 )
 from tests.utils import (
@@ -80,7 +80,10 @@ class TestStep1:
             gene_idx = genes.index(gene)
             gene_umi = np.asarray(matrix[gene_idx, :].todense()).flatten()
 
-            params = get_model_params_pergene(gene_umi, model_matrix, method="theta_ml")
+            params = get_model_params_per_gene(
+                gene_umi, model_matrix,
+                method="theta_ml",
+            )
 
             # Verify expected keys exist
             assert 'Intercept' in params, f"Missing 'Intercept' for gene {gene}"

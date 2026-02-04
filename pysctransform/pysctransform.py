@@ -165,7 +165,7 @@ def _process_y(y):
     return y
 
 
-def get_model_params_pergene(
+def get_model_params_per_gene(
         gene_umi,
         model_matrix,
         method="theta_ml",
@@ -287,13 +287,13 @@ def get_model_params_allgene(
         if verbosity:
             results = list(
                 tqdm(
-                    executor.map(lambda p: get_model_params_pergene(*p), feed_list),
+                    executor.map(lambda p: get_model_params_per_gene(*p), feed_list),
                     total=len(feed_list),
                 ),
             )
         else:
             results = list(
-                executor.map(lambda p: get_model_params_pergene(*p), feed_list),
+                executor.map(lambda p: get_model_params_per_gene(*p), feed_list),
             )
 
     params_df = pd.DataFrame(results)
@@ -535,6 +535,23 @@ def get_downsampling_params(n_cells, n_genes, total_cells, total_genes):
     return downsample_cells, downsample_genes, n_cells, n_genes
 
 
+def build_model_formula(latent_var, batch_var=None):
+    """
+    Build model formula matching R's sctransform.
+
+    R formula with batch: y ~ (log_umi) : batch + batch + 0
+    - Interaction of latent_var with batch
+    - Main effect of batch
+    - No global intercept
+    """
+    if batch_var is None:
+        return " + ".join(latent_var)
+    else:
+        # Match R: (latent_var) : batch + batch + 0
+        latent_part = "(" + " + ".join(latent_var) + ")"
+        return f"{latent_part} : C({batch_var}) + C({batch_var}) - 1"
+
+
 def vst(
         umi,
         gene_names=None,
@@ -595,13 +612,30 @@ def vst(
                     Whether to correct counts by reversing the GLM with median values
     exclude_poisson: bool
                      To exclude poisson genes from regularization and set final
-                     parameters based on offset model; default is False
+                     parameters based on offset model; default is False.
+                     Automatically set to False when batch_var is specified.
     fix_slope: bool
-               Whether to fix the slope; default is False
+               Whether to fix the slope; default is False.
+               Automatically set to False when batch_var is specified.
     verbosity: bool
                Print verbose messages
     """
     umi = umi.copy()
+
+    # Match R implementation - set to false exclude_poisson and fix_slope
+    if batch_var is not None:
+        if exclude_poisson:
+            if verbosity:
+                print(
+                    "exclude_poisson is not supported with batch_var, setting to False",
+                )
+            exclude_poisson = False
+        if fix_slope:
+            if verbosity:
+                print(
+                    "fix_slope is not supported with batch_var, setting to False",
+                )
+            fix_slope = False
 
     downsample_cells, downsample_genes, n_cells, n_genes = (
         get_downsampling_params(n_cells, n_genes, umi.shape[1], umi.shape[0]))
@@ -687,11 +721,9 @@ def vst(
         print("Running Step1")
     start = time.time()
 
-    if batch_var is None:
-        model_matrix = dmatrix(" + ".join(latent_var), data_step1)
-    else:
-        formula = " + ".join(latent_var) + " * C(" + batch_var + ", Treatment)"
-        model_matrix = dmatrix(formula, data_step1)
+    formula = build_model_formula(latent_var, batch_var)
+    model_matrix = dmatrix(formula, data_step1)
+
     useR = False
     if method == "offset":
         gene_mean = npy.ravel(umi.mean(1))
@@ -701,14 +733,16 @@ def vst(
         model_parameters["Intercept"] = npy.log(gene_mean) - npy.log(mean_cell_sum)
         model_parameters["log10_umi"] = [npy.log(10)] * len(genes)
     elif method == "glmgp":
-        model_parameters = get_model_params_allgene_glmgp(umi_step1, data_step1,
-                                                          threads=threads)
+        model_parameters = get_model_params_allgene_glmgp(
+            umi_step1, data_step1,
+            threads=threads,
+        )
         model_parameters.index = genes_step1
         useR = True
     elif method == "fix-slope":
         model_parameters = get_model_params_allgene_glmgp(
-            umi_step1, data_step1, threads=threads, use_offset=True
-            )
+            umi_step1, data_step1, threads=threads, use_offset=True,
+        )
         model_parameters.index = genes_step1
         useR = True
     elif method in ["theta_ml", "theta_lbfgs", "alpha_lbfgs"]:
