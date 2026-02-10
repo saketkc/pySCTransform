@@ -29,22 +29,6 @@ def pbmc3k_filtered_for_residuals(pbmc3k_data):
 
 
 @pytest.fixture(scope="session")
-def r_fitted_params():
-    """Load R's fitted parameters."""
-    r_fit = pd.read_csv("./data/r_model_pars_fit.csv", index_col=0)
-    return r_fit[~r_fit.index.duplicated(keep='first')]
-
-
-@pytest.fixture(scope="session")
-def r_residuals():
-    """Load R's Pearson residuals (expected output of step 3)."""
-    # This file should contain R's Pearson residuals matrix
-    # Rows = genes, Columns = cells
-    r_res = pd.read_csv("./data/r_residuals.csv", index_col=0)
-    return r_res
-
-
-@pytest.fixture(scope="session")
 def residual_inputs(pbmc3k_filtered_for_residuals, r_fitted_params):
     """Prepare all inputs needed for residual calculation."""
     matrix, genes, cells = pbmc3k_filtered_for_residuals
@@ -90,14 +74,6 @@ class TestStep3:
 
         Verifies that Python's residual calculation matches R's output.
         """
-        print(f"\nR residuals shape: {r_residuals.shape}")
-        print(
-            f"Python input: {len(residual_inputs['genes'])} genes, "
-            f"{len(residual_inputs['cells'])} cells",
-        )
-
-        # Calculate Python residuals
-        print("\nCalculating residuals...")
         py_residuals = get_residuals(
             umi=residual_inputs['matrix'],
             model_matrix=residual_inputs['model_matrix'],
@@ -106,14 +82,11 @@ class TestStep3:
             res_clip_range="default",
         )
 
-        # Convert to DataFrame for easier comparison
         py_residuals_df = pd.DataFrame(
             py_residuals,
             index=residual_inputs['genes'],
             columns=residual_inputs['cells'],
         )
-
-        print(f"Python residuals shape: {py_residuals_df.shape}")
 
         # Find common genes and cells - convert to SORTED LISTS for consistency
         common_genes = sorted(
@@ -123,78 +96,47 @@ class TestStep3:
             set(r_residuals.columns) & set(py_residuals_df.columns),
         )[:100]
 
-        print(f"Comparing {len(common_genes)} genes x {len(common_cells)} cells")
+        assert len(common_genes) > 0, "No overlapping genes"
+        assert len(common_cells) > 0, "No overlapping cells"
 
-        # Compare residuals for a sample of genes
-        print("\n" + "=" * 80)
-        print(
-            f"{'Gene':<15} {'R_mean':>10} {'Py_mean':>10} {'R_std':>10} "
-            f"{'Py_std':>10} {'Corr':>10} {'OK':>5}",
-        )
-        print("-" * 80)
-
+        # Per-gene correlations
         correlations = []
-        mean_diffs = []
-        std_diffs = []
+        low_corr_genes = []
 
         for gene in common_genes[:30]:
             r_vals = r_residuals.loc[gene, common_cells].values.astype(float)
             py_vals = py_residuals_df.loc[gene, common_cells].values.astype(float)
 
-            r_mean = np.mean(r_vals)
-            py_mean = np.mean(py_vals)
-            r_std = np.std(r_vals)
-            py_std = np.std(py_vals)
-
-            # Correlation between R and Python residuals for this gene
             corr = np.corrcoef(r_vals, py_vals)[0, 1]
             correlations.append(corr)
-            mean_diffs.append(abs(r_mean - py_mean))
-            std_diffs.append(abs(r_std - py_std))
+            if corr <= 0.99:
+                low_corr_genes.append((gene, corr))
 
-            ok = corr > 0.99 and abs(r_mean - py_mean) < 0.1
-            status = "✓" if ok else "✗"
+        assert np.mean(correlations) > 0.95, (
+            f"Mean per-gene correlation {np.mean(correlations):.3f} < 0.95 "
+            f"(low correlation genes: {low_corr_genes[:5]})"
+        )
 
-            print(
-                f"{gene:<15} {r_mean:>10.4f} {py_mean:>10.4f} "
-                f"{r_std:>10.4f} {py_std:>10.4f} {corr:>10.4f} {status:>5}",
-            )
-
-        print("=" * 80)
-
-        # Summary statistics
-        print("\nSummary:")
-        print(f"  Mean correlation: {np.mean(correlations):.4f}")
-        print(f"  Min correlation: {np.min(correlations):.4f}")
-        print(f"  Mean abs diff (means): {np.mean(mean_diffs):.4f}")
-        print(f"  Mean abs diff (stds): {np.mean(std_diffs):.4f}")
-
-        # Overall correlation (flatten and compare) - use same common_genes/cells
+        # Overall correlation across all compared values
         r_subset = r_residuals.loc[common_genes, common_cells]
         py_subset = py_residuals_df.loc[common_genes, common_cells]
-
-        # Verify shapes match before flattening
-        assert r_subset.shape == py_subset.shape, \
+        assert r_subset.shape == py_subset.shape, (
             f"Shape mismatch: R={r_subset.shape}, Py={py_subset.shape}"
+        )
 
-        r_flat = r_subset.values.flatten()
-        py_flat = py_subset.values.flatten()
-        overall_corr = np.corrcoef(r_flat, py_flat)[0, 1]
-        print(f"  Overall correlation: {overall_corr:.4f}")
+        overall_corr = np.corrcoef(
+            r_subset.values.flatten(), py_subset.values.flatten(),
+        )[0, 1]
 
-        # Assertions
-        assert np.mean(correlations) > 0.95, \
-            f"Mean per-gene correlation {np.mean(correlations):.3f} < 0.95"
-        assert overall_corr > 0.95, \
+        assert overall_corr > 0.95, (
             f"Overall correlation {overall_corr:.3f} < 0.95"
-
-        print("\n✓ Test passed!")
+        )
 
     def test_residuals_clipping(self, residual_inputs):
         """Test that residual clipping works correctly."""
         n_cells = residual_inputs['matrix'].shape[1]
 
-        # Test default clipping
+        # Default clipping: sqrt(n_cells)
         residuals_default = get_residuals(
             umi=residual_inputs['matrix'],
             model_matrix=residual_inputs['model_matrix'],
@@ -204,19 +146,16 @@ class TestStep3:
         )
 
         expected_clip = np.sqrt(n_cells)
-        assert np.max(residuals_default) <= expected_clip + 1e-6, \
-            (f"Default clipping failed: max={np.max(residuals_default)}, " +
-             f"expected<={expected_clip}")
-        assert np.min(residuals_default) >= -expected_clip - 1e-6, \
-            (f"Default clipping failed: min={np.min(residuals_default)}, " +
-             f"expected>={-expected_clip}")
-
-        print(
-            f"Default clipping (sqrt(n_cells)={expected_clip:.2f}): "
-            f"range=[{np.min(residuals_default):.2f}, {np.max(residuals_default):.2f}]",
+        assert np.max(residuals_default) <= expected_clip + 1e-6, (
+            f"Default clipping failed: max={np.max(residuals_default):.4f}, "
+            f"expected<={expected_clip:.4f}"
+        )
+        assert np.min(residuals_default) >= -expected_clip - 1e-6, (
+            f"Default clipping failed: min={np.min(residuals_default):.4f}, "
+            f"expected>={-expected_clip:.4f}"
         )
 
-        # Test Seurat clipping
+        # Seurat clipping: sqrt(n_cells / 30)
         residuals_seurat = get_residuals(
             umi=residual_inputs['matrix'],
             model_matrix=residual_inputs['model_matrix'],
@@ -226,17 +165,17 @@ class TestStep3:
         )
 
         expected_clip_seurat = np.sqrt(n_cells / 30)
-        assert np.max(residuals_seurat) <= expected_clip_seurat + 1e-6, \
-            f"Seurat clipping failed: max={np.max(residuals_seurat)}"
-        assert np.min(residuals_seurat) >= -expected_clip_seurat - 1e-6, \
-            f"Seurat clipping failed: min={np.min(residuals_seurat)}"
-
-        print(
-            f"Seurat clipping (sqrt(n_cells/30)={expected_clip_seurat:.2f}): "
-            f"range=[{np.min(residuals_seurat):.2f}, {np.max(residuals_seurat):.2f}]",
+        assert np.max(residuals_seurat) <= expected_clip_seurat + 1e-6, (
+            f"Seurat clipping failed: max={np.max(residuals_seurat):.4f}, "
+            f"expected<={expected_clip_seurat:.4f}"
+        )
+        assert np.min(residuals_seurat) >= -expected_clip_seurat - 1e-6, (
+            f"Seurat clipping failed: min={np.min(residuals_seurat):.4f}, "
+            f"expected>={-expected_clip_seurat:.4f}"
         )
 
-        print("\n✓ Clipping test passed!")
+        assert expected_clip_seurat < expected_clip, \
+            "Clip range should be tighter than default"
 
     def test_residuals_statistics(self, residual_inputs):
         """Test that residuals have expected statistical properties."""
@@ -248,23 +187,16 @@ class TestStep3:
             res_clip_range="default",
         )
 
-        # Pearson residuals should be approximately mean 0 for well-fitted models
-        # (though clipping can shift this slightly)
         gene_means = np.mean(residuals, axis=1)
         gene_vars = np.var(residuals, axis=1)
 
-        print("\nResidual statistics:")
-        print(
-            f"  Gene means: min={np.min(gene_means):.4f}, "
-            f"max={np.max(gene_means):.4f}, median={np.median(gene_means):.4f}",
-        )
-        print(
-            f"  Gene variances: min={np.min(gene_vars):.4f}, "
-            f"max={np.max(gene_vars):.4f}, median={np.median(gene_vars):.4f}",
+        # Most genes should have mean close to 0 for well-fitted models
+        median_abs_mean = np.median(np.abs(gene_means))
+        assert median_abs_mean < 0.5, (
+            f"Median absolute gene mean too high: {median_abs_mean:.4f} "
+            f"(gene mean range: [{np.min(gene_means):.4f}, {np.max(gene_means):.4f}])"
         )
 
-        # Most genes should have mean close to 0
-        assert np.median(np.abs(gene_means)) < 0.5, \
-            f"Median absolute gene mean too high: {np.median(np.abs(gene_means)):.4f}"
-
-        print("\n✓ Statistics test passed!")
+        # Variances should be positive and finite
+        assert np.all(np.isfinite(gene_vars)), "Non-finite gene variances found"
+        assert np.all(gene_vars >= 0), "Negative gene variances found"

@@ -872,7 +872,7 @@ def vst(
         )
 
     model_parameters_to_return = model_parameters.copy()
-    non_outliers = (outliers_df.sum(1) == 0).values
+    non_outliers = (outliers_df.sum(axis=1) == 0).values
     outliers = ~non_outliers
     if verbosity:
         print("Total outliers: {}".format(npy.sum(outliers)))
@@ -926,8 +926,8 @@ def vst(
         print("Step3 done. Took {} seconds.".format(npy.ceil(end - start)))
 
     gene_attr["theta_regularized"] = model_parameters_fit["theta"]
-    gene_attr["residual_mean"] = residuals.mean(1)
-    gene_attr["residual_variance"] = residuals.var(1)
+    gene_attr["residual_mean"] = residuals.mean(axis=1)
+    gene_attr["residual_variance"] = residuals.var(axis=1)
 
     corrected_counts = None
     if correct_counts:

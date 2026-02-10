@@ -2,10 +2,8 @@
 Tests for theta_ml function comparing against R's sctransform implementation.
 """
 import numpy as np
-import pandas as pd
 import pytest
 import statsmodels.discrete.discrete_model
-from patsy import dmatrix
 
 from pysctransform.fit import theta_ml
 from tests.utils import get_pbmc3k_filtered
@@ -17,29 +15,11 @@ def pbmc3k_data(tmp_path_factory):
     return get_pbmc3k_filtered(cache_dir)
 
 
-@pytest.fixture(scope="session")
-def r_reference_data():
-    return pd.read_csv("./data/r_model_pars.csv", index_col=0)
-
-
-@pytest.fixture(scope="session")
-def pbmc3k_with_model(pbmc3k_data):
-    matrix, genes, cells = pbmc3k_data
-
-    total_umi_per_cell = np.asarray(matrix.sum(axis=0)).flatten()
-    log_umi = np.log10(total_umi_per_cell)
-
-    cell_attr = pd.DataFrame({'log_umi': log_umi}, index=cells)
-    design_matrix = dmatrix("log_umi", cell_attr)
-
-    return matrix, genes, cells, design_matrix
-
-
 @pytest.mark.network
 class TestThetaML:
 
     def test_theta_ml_matches_r_implementation(
-            self, pbmc3k_with_model, r_reference_data,
+        self, pbmc3k_with_model, r_reference_data,
     ):
         """
         Verify that theta_ml with defaults matches R's sctransform output.
@@ -96,9 +76,9 @@ class TestThetaML:
 
         assert total_count > 0, "No genes were tested"
         assert match_rate >= 0.95, (
-                f"Match rate {match_rate:.1%} ({match_count}/{total_count}) " +
-                "is below 95% threshold. "
-                f"Failed genes: {[r['gene'] for r in results if not r['match']]}"
+            f"Match rate {match_rate:.1%} ({match_count}/{total_count}) " +
+            "is below 95% threshold. "
+            f"Failed genes: {[r['gene'] for r in results if not r['match']]}"
         )
 
     @pytest.mark.parametrize("gene_idx", [0, 10, 50, 100])

@@ -29,20 +29,6 @@ def pbmc3k_filtered_for_regularization(pbmc3k_data):
 
 
 @pytest.fixture(scope="session")
-def r_raw_params():
-    """Load R's raw parameters (input to step 2)."""
-    r_raw = pd.read_csv("./data/r_model_pars.csv", index_col=0)
-    return r_raw[~r_raw.index.duplicated(keep='first')]
-
-
-@pytest.fixture(scope="session")
-def r_fitted_params():
-    """Load R's fitted parameters (expected output of step 2)."""
-    r_fit = pd.read_csv("./data/r_model_pars_fit.csv", index_col=0)
-    return r_fit[~r_fit.index.duplicated(keep='first')]
-
-
-@pytest.fixture(scope="session")
 def regularization_inputs(pbmc3k_filtered_for_regularization, r_raw_params):
     """Prepare all inputs needed for regularization."""
     matrix, genes, cells = pbmc3k_filtered_for_regularization
@@ -99,7 +85,7 @@ def regularization_inputs(pbmc3k_filtered_for_regularization, r_raw_params):
 @pytest.mark.network
 class TestStep2:
     def test_regularization_correlation(
-            self, regularization_inputs, r_fitted_params,
+        self, regularization_inputs, r_fitted_params,
     ):
         """
         Test step 2 (regularization) using R's raw parameters as input.
@@ -107,15 +93,6 @@ class TestStep2:
         Verifies that Python's regularization produces parameters highly
         correlated with R's fitted parameters.
         """
-        print(f"\nR fitted parameters: {len(r_fitted_params)} genes")
-        print(
-            "Genes in step 1 (after outlier removal): " +
-            f"{len(regularization_inputs['genes_step1'])}",
-        )
-        print(f"Outliers removed: {regularization_inputs['n_outliers']}")
-
-        # Run Python's regularization
-        print("\nRunning regularization...")
         py_fit = get_regularized_params(
             model_parameters=regularization_inputs['model_parameters'],
             genes=regularization_inputs['genes'],
@@ -127,79 +104,34 @@ class TestStep2:
             theta_regularization="od_factor",
         )
 
-        print(f"Python fitted parameters: {len(py_fit)} genes")
+        assert len(py_fit) > 0, "Regularization produced no results"
 
-        # Compare fitted parameters
         common_genes = list(r_fitted_params.index.intersection(py_fit.index))[:100]
-        print(f"\nComparing {len(common_genes)} genes")
-        print("=" * 75)
-        print(
-            f"{'Gene':<15} {'R_int':>12} {'Py_int':>12} "
-            f"{'R_theta':>12} {'Py_theta':>12} {'OK':>5}",
-        )
-        print("-" * 75)
+        assert len(
+            common_genes) > 0, "No overlapping genes between R fitted and Python fitted"
 
-        matches = 0
-        int_diffs = []
-        theta_diffs = []
-
-        for gene in common_genes[:50]:
-            r_int = float(r_fitted_params.loc[gene, '(Intercept)'])
-            r_theta = float(r_fitted_params.loc[gene, 'theta'])
-            py_int = float(py_fit.loc[gene, 'Intercept'])
-            py_theta = float(py_fit.loc[gene, 'theta'])
-
-            int_diff = abs(py_int - r_int)
-            int_diffs.append(int_diff)
-
-            # Use relative tolerance for theta
-            if np.isinf(r_theta) and np.isinf(py_theta):
-                theta_ok = True
-                theta_diff = 0
-            elif np.isinf(r_theta) or np.isinf(py_theta):
-                theta_ok = False
-                theta_diff = np.inf
-            else:
-                theta_diff = abs(py_theta - r_theta) / max(r_theta, 0.001)
-                theta_ok = theta_diff < 0.1  # 10% relative tolerance
-
-            theta_diffs.append(theta_diff)
-
-            int_ok = int_diff < 0.1  # Absolute tolerance for intercept
-            all_ok = int_ok and theta_ok
-
-            if all_ok:
-                matches += 1
-
-            status = "✓" if all_ok else "✗"
-            print(
-                f"{gene:<15} {r_int:>12.4f} {py_int:>12.4f} "
-                f"{r_theta:>12.4f} {py_theta:>12.4f} {status:>5}",
-            )
-
-        # Summary statistics
-        print("=" * 75)
-        print("\nSummary:")
-        print(f"  Matched: {matches}/50 ({100 * matches / 50:.1f}%)")
-        print(f"  Intercept mean abs diff: {np.mean(int_diffs):.4f}")
-        finite_theta_diffs = [d for d in theta_diffs if np.isfinite(d)]
-        print(f"  Theta mean rel diff: {np.mean(finite_theta_diffs):.4f}")
-
-        # Calculate correlations
-        r_ints = [float(r_fitted_params.loc[g, '(Intercept)']) for g in common_genes]
-        py_ints = [float(py_fit.loc[g, 'Intercept']) for g in common_genes]
+        # Intercept correlation
+        r_ints = np.array(
+            [float(r_fitted_params.loc[g, '(Intercept)']) for g in common_genes])
+        py_ints = np.array([float(py_fit.loc[g, 'Intercept']) for g in common_genes])
         int_corr = np.corrcoef(r_ints, py_ints)[0, 1]
+        int_mean_diff = np.mean(np.abs(r_ints - py_ints))
 
+        # Theta correlation (finite values only)
         r_thetas = np.array(
-            [float(r_fitted_params.loc[g, 'theta']) for g in common_genes],
-        )
+            [float(r_fitted_params.loc[g, 'theta']) for g in common_genes])
         py_thetas = np.array([float(py_fit.loc[g, 'theta']) for g in common_genes])
         finite_mask = np.isfinite(r_thetas) & np.isfinite(py_thetas)
+        assert finite_mask.sum() > 10, (
+            f"Too few finite theta values for comparison: {finite_mask.sum()}"
+        )
         theta_corr = np.corrcoef(r_thetas[finite_mask], py_thetas[finite_mask])[0, 1]
 
-        print(f"  Intercept correlation: {int_corr:.4f}")
-        print(f"  Theta correlation: {theta_corr:.4f}")
-
-        # Assertions
-        assert int_corr > 0.95, f"Intercept correlation {int_corr:.3f} < 0.95"
+        assert int_corr > 0.95, (
+            f"Intercept correlation {int_corr:.3f} < 0.95 "
+            f"(mean abs diff: {int_mean_diff:.4f})"
+        )
         assert theta_corr > 0.90, f"Theta correlation {theta_corr:.3f} < 0.90"
+        assert int_mean_diff < 0.5, (
+            f"Intercept mean absolute difference too large: {int_mean_diff:.4f}"
+        )

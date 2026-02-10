@@ -11,7 +11,6 @@ from pysctransform.pysctransform import (
 from tests.utils import (
     compare_params,
     compute_correlation,
-    print_comparison_footer,
 )
 
 
@@ -30,39 +29,29 @@ class TestStep1Batch:
         """
         Test step 1 (raw parameter estimation) with batch variable for 50 genes.
         """
-        r_raw = r_batch_reference
-        r_genes = list(r_raw.index)
-        r_columns = list(r_raw.columns)
-        print(f"R raw parameters: {len(r_raw)} genes")
-        print(f"R columns: {r_columns}")
+        r_genes = list(r_batch_reference.index)
+        r_columns = list(r_batch_reference.columns)
 
         matrix, genes, cells, cell_attr, design_matrix, formula = pbmc3k_batch_model
         py_columns = design_matrix.design_info.column_names
-        print(f"Python design matrix columns: {py_columns}")
 
         test_genes = [g for g in r_genes[:50] if g in genes]
-        print(f"\nTesting {len(test_genes)} genes")
+        assert len(
+            test_genes) > 0, "No overlapping genes between R reference and Python data"
 
-        # Build column mapping between R and Python names
-        # R uses e.g. "batchA:log_umi", Python uses e.g. "C(batch)[A]:log10_umi"
-        # We'll compare by matching batch level and parameter type
         r_coef_cols = [c for c in r_columns if c != "theta"]
         py_coef_cols = [c for c in py_columns]
 
-        print(f"R coefficient columns: {r_coef_cols}")
-        print(f"Python coefficient columns: {py_coef_cols}")
         assert len(r_coef_cols) == len(py_coef_cols), (
             f"Column count mismatch: R has {len(r_coef_cols)}, "
             f"Python has {len(py_coef_cols)}"
         )
 
-        # Match columns by sorting both (they should correspond after sorting)
-        # This is fragile — inspect printed columns above to build a proper mapping
         col_map = dict(zip(sorted(py_coef_cols), sorted(r_coef_cols)))
-        print(f"Column mapping (Python -> R): {col_map}")
 
         matches = 0
         py_thetas, r_thetas = [], []
+        mismatched_genes = []
 
         for gene in test_genes:
             gene_idx = genes.index(gene)
@@ -74,7 +63,7 @@ class TestStep1Batch:
             )
 
             py_theta = params["theta"]
-            r_theta = float(r_raw.loc[gene, "theta"])
+            r_theta = float(r_batch_reference.loc[gene, "theta"])
 
             py_thetas.append(py_theta)
             r_thetas.append(r_theta)
@@ -84,7 +73,7 @@ class TestStep1Batch:
             coef_ok = True
             for py_col, r_col in col_map.items():
                 py_val = params[py_col]
-                r_val = float(r_raw.loc[gene, r_col])
+                r_val = float(r_batch_reference.loc[gene, r_col])
                 ok, _ = compare_params(py_val, r_val, atol=0.001)
                 if not ok:
                     coef_ok = False
@@ -92,20 +81,14 @@ class TestStep1Batch:
             all_ok = theta_ok and coef_ok
             if all_ok:
                 matches += 1
+            else:
+                mismatched_genes.append(gene)
 
-            status = "✓" if all_ok else "✗"
-            print(
-                f"{gene:<15} "
-                f"R_theta={r_theta:>10.4f} Py_theta={py_theta:>10.4f} "
-                f"{status:>5}",
-            )
-
-        print_comparison_footer()
         match_rate = matches / len(test_genes)
         theta_corr = compute_correlation(py_thetas, r_thetas)
 
-        print(f"Match rate: {match_rate:.1%}")
-        print(f"Theta correlation: {theta_corr:.4f}")
-
-        assert match_rate >= 0.90, f"Match rate too low: {match_rate:.1%}"
+        assert match_rate >= 0.90, (
+            f"Match rate too low: {match_rate:.1%} "
+            f"({len(mismatched_genes)} mismatched genes: {mismatched_genes[:10]})"
+        )
         assert theta_corr > 0.99, f"Theta correlation too low: {theta_corr:.4f}"

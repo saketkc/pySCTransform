@@ -1,5 +1,6 @@
 import pytest
 import pandas as pandas
+import numpy as numpy
 from patsy import dmatrix
 from pysctransform.pysctransform import (
     build_model_formula,
@@ -37,6 +38,27 @@ def pbmc3k_batch_model(pbmc3k_data, batch_cell_attr):
 
 
 @pytest.fixture(scope="session")
+def r_reference_data():
+    return load_r_reference("./data/r_model_pars.csv")
+
+
+@pytest.fixture(scope="session")
+def r_raw_params():
+    return load_r_reference("./data/r_model_pars.csv")
+
+
+@pytest.fixture(scope="session")
+def r_fitted_params():
+    return load_r_reference("./data/r_model_pars_fit.csv")
+
+
+@pytest.fixture(scope="session")
+def r_residuals():
+    """Load R's Pearson residuals (expected output of step 3)."""
+    return load_r_reference("./data/r_residuals.csv")
+
+
+@pytest.fixture(scope="session")
 def r_batch_reference():
     return load_r_reference("./data/r_batch_model_pars.csv")
 
@@ -44,3 +66,16 @@ def r_batch_reference():
 @pytest.fixture(scope="session")
 def r_batch_fit_reference():
     return load_r_reference("./data/r_batch_model_pars_fit.csv")
+
+
+@pytest.fixture(scope="session")
+def pbmc3k_with_model(pbmc3k_data):
+    matrix, genes, cells = pbmc3k_data
+
+    total_umi_per_cell = numpy.asarray(matrix.sum(axis=0)).flatten()
+    log_umi = numpy.log10(total_umi_per_cell)
+
+    cell_attr = pandas.DataFrame({'log_umi': log_umi}, index=cells)
+    design_matrix = dmatrix("log_umi", cell_attr)
+
+    return matrix, genes, cells, design_matrix
