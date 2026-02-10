@@ -22,7 +22,7 @@ We recommend using `conda <https://docs.conda.io/en/latest/>`_ for installing py
 
 .. code-block:: bash
 
-    conda create -n pysct python==3.12
+    conda create -n pysct python==3.12 -y
     conda activate pysct
 
 
@@ -86,6 +86,11 @@ Quickstart
 Development
 ===========
 
+Code style chec:
+
+.. code-block:: bash
+flake8
+
 To run various tests:
 
 .. code-block:: bash
@@ -103,9 +108,10 @@ Regenerate the R outputs to test again:
 
 .. code-block:: bash
 
-conda create -n pysct_test -c conda-forge r-sctransform=0.4.3 r-matrix=1.7_4 -y
+conda create -n pysct_test -c conda-forge -c bioconda r-sctransform=0.4.3 r-matrix=1.7_4 bioconductor-glmgampoi -y
 conda activate pysct_test
 Rscript /scripts/generate_reference.R
+Rscript /scripts/generate_reference_batch.R
 
 
 =========

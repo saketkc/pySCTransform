@@ -40,7 +40,7 @@ def download_pbmc3k(cache_dir: Path) -> tuple:
 
 
 def filter_pbmc3k(
-        matrix, genes: list, cells: list, min_genes: int = 3, min_cells: int = 200,
+    matrix, genes: list, cells: list, min_genes: int = 3, min_cells: int = 200,
 ) -> tuple:
     """Filter genes and cells by minimum counts."""
     gene_mask = np.array((matrix > 0).sum(axis=1)).flatten() >= min_genes
@@ -54,7 +54,7 @@ def filter_pbmc3k(
 
 
 def get_pbmc3k_filtered(
-        cache_dir: Path, min_genes: int = 3, min_cells: int = 200,
+    cache_dir: Path, min_genes: int = 3, min_cells: int = 200,
 ) -> tuple:
     """Download and filter PBMC3k data."""
     matrix, genes, cells = download_pbmc3k(cache_dir)
@@ -70,10 +70,10 @@ def load_r_reference(filepath: str, deduplicate: bool = True) -> pd.DataFrame:
 
 
 def compare_params(
-        py_value: float,
-        r_value: float,
-        atol: float = 0.001,
-        rtol: float | None = None,
+    py_value: float,
+    r_value: float,
+    atol: float = 0.001,
+    rtol: float | None = None,
 ) -> tuple[bool, float]:
     """
     Compare a Python parameter value against an R reference value.
@@ -109,7 +109,7 @@ def compare_params(
 
 
 def compute_correlation(
-        x: np.ndarray, y: np.ndarray, finite_only: bool = True,
+    x: np.ndarray, y: np.ndarray, finite_only: bool = True,
 ) -> float:
     """
     Compute Pearson correlation between two arrays.
@@ -151,3 +151,39 @@ def print_comparison_header(columns: list[tuple[str, int]], total_width: int = 8
 def print_comparison_footer(total_width: int = 85):
     """Print a formatted comparison table footer."""
     print("=" * total_width)
+
+
+def build_batch_column_map(r_columns):
+    """Map between R column names and Python names (e.g. 'C(batch)[A]')."""
+    col_map = {}
+    for col in r_columns:
+        if col == 'theta':
+            col_map[col] = col
+        elif col == 'batchA':
+            col_map[col] = 'C(batch)[A]'
+        elif col == 'batchB':
+            col_map[col] = 'C(batch)[B]'
+        elif col == 'log_umi:batchA':
+            col_map[col] = 'log10_umi:C(batch)[A]'
+        elif col == 'log_umi:batchB':
+            col_map[col] = 'log10_umi:C(batch)[B]'
+    return col_map
+
+
+def compare_gene_parameter(py_params, r_params, test_genes, param="theta", rtol=0.1):
+    """Compare a single parameter across genes between Python and R results."""
+    py_vals, r_vals, matches = [], [], 0
+    for gene in test_genes:
+        if gene not in py_params.index or gene not in r_params.index:
+            continue
+        py_val = py_params.loc[gene, param]
+        r_val = float(r_params.loc[gene, param])
+        py_vals.append(py_val)
+        r_vals.append(r_val)
+        ok, _ = compare_params(py_val, r_val, rtol=rtol)
+        if ok:
+            matches += 1
+    tested = len(py_vals)
+    match_rate = matches / tested if tested > 0 else 0
+    corr = compute_correlation(py_vals, r_vals)
+    return match_rate, corr, tested

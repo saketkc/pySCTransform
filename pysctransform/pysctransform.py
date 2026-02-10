@@ -345,24 +345,80 @@ def get_regularized_params(
         ["x_points", "max_gene_log10_gmean_step1"]
     ].min(axis=1)
     x_points = x_points_df["x_points"].values
+
+    assert len(model_parameters) == len(genes_log10_gmean_step1), (
+        f"Shape mismatch: model_parameters has {len(model_parameters)} genes, "
+        f"genes_log10_gmean_step1 has {len(genes_log10_gmean_step1)}"
+    )
+
+    # Pre-compute batch-specific gene means if batch_var is set
+    batch_gmeans_step1 = {}
+    batch_gmeans_all = {}
+    batch_x_points = {}
+    if batch_var is not None:
+        batches = cell_attr[batch_var].unique()
+        for b in batches:
+            batch_cells_step1 = cell_attr.index[cell_attr[batch_var] == b]
+            batch_cell_idx = npy.array([
+                i for i, c in enumerate(cell_attr.index) if c in set(batch_cells_step1)
+            ])
+
+            # Step1 genes, batch-specific means
+            umi_step1_genes = umi[npy.isin(genes, genes_step1), :]
+            batch_gm_step1 = npy.log10(
+                row_gmean(umi_step1_genes[:, batch_cell_idx], gmean_eps=gmean_eps)
+            )
+            batch_gmeans_step1[b] = batch_gm_step1
+
+            # All genes, batch-specific means
+            batch_gm_all = npy.log10(
+                row_gmean(umi[:, batch_cell_idx], gmean_eps=gmean_eps)
+            )
+            # Clamp to step1 range
+            batch_gm_all = npy.maximum(batch_gm_all, batch_gm_step1.min())
+            batch_gmeans_all[b] = batch_gm_all
+
+            batch_x_points[b] = batch_gm_all
+
     for column in model_parameters.columns:
         if column == "theta":
             continue
-        endog = model_parameters.loc[genes_step1, column].values
-        exog_fit = genes_log10_gmean_step1  # .values
+        endog = model_parameters[column].values
+        exog_fit = genes_log10_gmean_step1
+
+        # Determine if this is a batch-specific column
+        batch_col = None
+        if batch_var is not None:
+            for b in batches:
+                if str(b) in column:
+                    batch_col = b
+                    break
+
         if useR:
-            bw = bw_SJr(genes_log10_gmean_step1, bw_adjust=bw_adjust)  # .values)
+            bw = bw_SJr(genes_log10_gmean_step1, bw_adjust=bw_adjust)
             params = ksmooth(genes_log10_gmean, genes_log10_gmean_step1, endog, bw[0])
             index = model_parameters_fit.index.values[npy.asarray(params["order"]) - 1]
             model_parameters_fit.loc[index, column] = params["smoothed"]
         else:
-            bw = bw_silverman(genes_log10_gmean_step1, bw_adjust=bw_adjust)  # .values)
-            reg = KernelReg(
-                endog=endog, exog=exog_fit, var_type="c", reg_type="ll", bw=bw,
-            )
-            fit = reg.fit(x_points)
-            model_parameters_fit[column] = npy.squeeze(fit[0])
-        # print(bw)
+            if batch_col is not None:
+                # Per-batch smoothing: use batch-specific gene means
+                bw = bw_silverman(batch_gmeans_step1[batch_col], bw_adjust=bw_adjust)
+                reg = KernelReg(
+                    endog=endog,
+                    exog=batch_gmeans_step1[batch_col],
+                    var_type="c", reg_type="ll", bw=bw,
+                )
+                fit = reg.fit(batch_x_points[batch_col])
+                model_parameters_fit[column] = npy.squeeze(fit[0])
+            else:
+                # Global smoothing (dispersion parameter)
+                bw = bw_silverman(exog_fit, bw_adjust=bw_adjust)
+                reg = KernelReg(
+                    endog=endog, exog=exog_fit, var_type="c", reg_type="ll", bw=bw,
+                )
+                fit = reg.fit(x_points)
+                model_parameters_fit[column] = npy.squeeze(fit[0])
+
     if theta_regularization == "theta":
         theta = npy.power(10, (model_parameters_fit["od_factor"]))
     else:
@@ -371,12 +427,8 @@ def get_regularized_params(
         )
     model_parameters_fit["theta"] = theta
     if exclude_poisson:
-        # relace theta by inf
         if poisson_genes is not None:
-            print("len poisson genes", len(poisson_genes))
             model_parameters_fit.loc[poisson_genes, "theta"] = npy.inf
-            # model_parameters_fit["is_poisson"]= False
-            # model_parameters_fit.loc[poisson_genes, "is_poisson"] = True
             if theta_regularization == "theta":
                 model_parameters_fit.loc[poisson_genes, "od_factor"] = npy.inf
             else:
@@ -659,6 +711,13 @@ def vst(
     min_cells_genes_index = npy.squeeze(genes_cell_count >= min_cells)
     genes = gene_names[min_cells_genes_index]
     cell_attr = make_cell_attr(umi, cell_names)
+
+    # Remove duplicate gene names - keep first to match R behavior
+    unique_mask = ~pd.Series(genes).duplicated().values
+    if not unique_mask.all():
+        genes = genes[unique_mask]
+        min_cells_genes_index = npy.where(min_cells_genes_index)[0][unique_mask]
+
     if cell_attr_extra is not None:
         for col in cell_attr_extra.columns:
             cell_attr[col] = cell_attr_extra.loc[cell_attr.index, col].values
@@ -818,13 +877,13 @@ def vst(
     if verbosity:
         print("Total outliers: {}".format(npy.sum(outliers)))
 
-    genes_non_outliers = genes_step1[non_outliers]
     genes_step1 = genes_step1[non_outliers]
     genes_log10_gmean_step1 = genes_log10_gmean_step1[non_outliers]
+
     if method == "offset":
         model_parameters_fit = model_parameters.copy()
     else:
-        model_parameters = model_parameters.loc[genes_non_outliers]
+        model_parameters = model_parameters[non_outliers]
         if exclude_poisson:
             non_poisson_genes = set(model_parameters.index.tolist()).difference(
                 poisson_genes,
@@ -838,6 +897,7 @@ def vst(
             genes_log10_gmean,
             cell_attr,
             umi,
+            batch_var,
             theta_regularization=theta_regularization,
             exclude_poisson=exclude_poisson,
             poisson_genes=poisson_genes,

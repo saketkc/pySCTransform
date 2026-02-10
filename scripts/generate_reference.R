@@ -1,34 +1,19 @@
 #!/usr/bin/env Rscript
 # Generate sctransform reference output with NO gene subsampling
 
-library(sctransform)
-library(Matrix)
-
-# Download PBMC3k data
-url <- "https://cf.10xgenomics.com/samples/cell/pbmc3k/pbmc3k_filtered_gene_bc_matrices.tar.gz"
-tmp <- tempfile(fileext = ".tar.gz")
-download.file(url, tmp, mode = "wb")
-untar(tmp, exdir = tempdir())
-
-# Read 10x data
-data_dir <- file.path(tempdir(), "filtered_gene_bc_matrices", "hg19")
-matrix <- as(readMM(file.path(data_dir, "matrix.mtx")), "dgCMatrix")
-genes <- read.delim(file.path(data_dir, "genes.tsv"), header = FALSE, stringsAsFactors = FALSE)
-barcodes <- read.delim(file.path(data_dir, "barcodes.tsv"), header = FALSE, stringsAsFactors = FALSE)
-rownames(matrix) <- genes$V2
-colnames(matrix) <- barcodes$V1
-
-# Filter
-matrix <- matrix[rowSums(matrix > 0) >= 3, colSums(matrix > 0) >= 200]
-cat(sprintf("Matrix: %d genes x %d cells\n", nrow(matrix), ncol(matrix)))
+# Download PBMC3K
+source("scripts/load_pbmc3k.R")
 
 # Run sctransform with NO gene subsampling
-set.seed(42)
-vst_out <- vst(matrix, n_genes = NULL, method = "poisson", verbosity = 2)
-residuals_sample <- vst_out$y[1:500, ]
+vst_out <- vst(
+  matrix,
+  n_genes = NULL,
+  method = "poisson",
+  theta_estimation_fun = "theta.ml",
+  verbosity = 2)
+residuals_sample <- vst_out$y[1:500,]
 
-# Save raw parameters (ALL genes)
+# Save outputs
 write.csv(vst_out$model_pars, "data/r_model_pars.csv")
 write.csv(vst_out$model_pars_fit, "data/r_model_pars_fit.csv")
-# Save out residuals
 write.csv(as.matrix(residuals_sample), "./data/r_residuals.csv")
