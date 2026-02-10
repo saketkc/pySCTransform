@@ -913,6 +913,8 @@ def vst(
         print("Running Step3")
     start = time.time()
 
+    # Rebuild matrix
+    model_matrix = dmatrix(formula, cell_attr)
     residuals = pd.DataFrame(
         get_residuals(umi, model_matrix, model_parameters_fit, residual_type),
     )
