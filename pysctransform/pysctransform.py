@@ -172,7 +172,7 @@ def get_model_params_per_gene(
         offset_intercept=None,
         cell_umi=None,
         fix_slope=False,
-):  # latent_var, cell_attr):
+):
     gene_umi = _process_y(gene_umi)
     if method == "sm_nb":
         model = dm.NegativeBinomial(gene_umi, model_matrix, loglike_method="nb2")
@@ -368,14 +368,22 @@ def get_regularized_params(
             batch_gm_step1 = npy.log10(
                 row_gmean(umi_step1_genes[:, batch_cell_idx], gmean_eps=gmean_eps)
             )
+            finite_mask = npy.isfinite(batch_gm_step1)
+            if not finite_mask.all() and finite_mask.any():
+                batch_gm_step1[~finite_mask] = batch_gm_step1[finite_mask].min()
             batch_gmeans_step1[b] = batch_gm_step1
 
             # All genes, batch-specific means
             batch_gm_all = npy.log10(
                 row_gmean(umi[:, batch_cell_idx], gmean_eps=gmean_eps)
             )
+            # Replace -inf with min finite value
+            finite_mask_all = npy.isfinite(batch_gm_all)
+            if not finite_mask_all.all() and finite_mask_all.any():
+                batch_gm_all[~finite_mask_all] = batch_gm_all[finite_mask_all].min()
             # Clamp to step1 range
             batch_gm_all = npy.maximum(batch_gm_all, batch_gm_step1.min())
+            batch_gm_all = npy.minimum(batch_gm_all, batch_gm_step1.max())
             batch_gmeans_all[b] = batch_gm_all
 
             batch_x_points[b] = batch_gm_all
@@ -400,24 +408,29 @@ def get_regularized_params(
             index = model_parameters_fit.index.values[npy.asarray(params["order"]) - 1]
             model_parameters_fit.loc[index, column] = params["smoothed"]
         else:
+            bw = bw_silverman(exog_fit, bw_adjust=bw_adjust)
+
             if batch_col is not None:
-                # Per-batch smoothing: use batch-specific gene means
-                bw = bw_silverman(batch_gmeans_step1[batch_col], bw_adjust=bw_adjust)
-                reg = KernelReg(
-                    endog=endog,
-                    exog=batch_gmeans_step1[batch_col],
-                    var_type="c", reg_type="ll", bw=bw,
-                )
-                fit = reg.fit(batch_x_points[batch_col])
-                model_parameters_fit[column] = npy.squeeze(fit[0])
+                valid = npy.isfinite(endog) & npy.isfinite(exog_fit)
             else:
-                # Global smoothing (dispersion parameter)
-                bw = bw_silverman(exog_fit, bw_adjust=bw_adjust)
-                reg = KernelReg(
-                    endog=endog, exog=exog_fit, var_type="c", reg_type="ll", bw=bw,
-                )
-                fit = reg.fit(x_points)
-                model_parameters_fit[column] = npy.squeeze(fit[0])
+                valid = npy.isfinite(endog)
+
+            if valid.sum() < len(endog):
+                endog_fit_data = endog[valid]
+                exog_fit_data = exog_fit[valid]
+            else:
+                endog_fit_data = endog
+                exog_fit_data = exog_fit
+
+            reg = KernelReg(
+                endog=endog_fit_data, exog=exog_fit_data,
+                var_type="c", reg_type="lc", bw=bw,
+            )
+            fit_points = (
+                batch_x_points[batch_col] if batch_col is not None else x_points
+            )
+            fit = reg.fit(fit_points)
+            model_parameters_fit[column] = npy.squeeze(fit[0])
 
     if theta_regularization == "theta":
         theta = npy.power(10, (model_parameters_fit["od_factor"]))

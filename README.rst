@@ -108,11 +108,11 @@ Regenerate the R outputs to test again:
 
 .. code-block:: bash
 
-conda create -n pysct_test -c conda-forge -c bioconda r-sctransform=0.4.3 r-matrix=1.7_4 bioconductor-glmgampoi -y
+conda create -n pysct_test -c conda-forge -c bioconda r-sctransform=0.4.3 r-matrix=1.7_4 r-seurat-5.4.0 r-hdf5r=1.14.6 bioconductor-glmgampoi=1.18.0 -y
 conda activate pysct_test
 Rscript /scripts/generate_reference.R
 Rscript /scripts/generate_reference_batch.R
-
+Rscript /scripts/generate_integrated_reference.R
 
 =========
 CITATION

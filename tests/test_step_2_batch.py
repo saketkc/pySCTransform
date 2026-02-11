@@ -59,24 +59,19 @@ class TestStep2Batch:
 
         matrix, genes, cells, cell_attr, design_matrix, formula = pbmc3k_batch_model
 
-        # Filter genes same as vst does
         genes_arr = np.array(genes)
         genes_cell_count = np.asarray((matrix >= 0.01).sum(axis=1)).squeeze()
         min_cells_mask = genes_cell_count >= 10
         filtered_indices = np.where(min_cells_mask)[0]
         genes_filtered = genes_arr[min_cells_mask]
 
-        # Remove duplicates
         unique_mask = ~pd.Series(genes_filtered).duplicated().values
         genes_filtered = genes_filtered[unique_mask]
         filtered_indices = filtered_indices[unique_mask]
         matrix_filtered = matrix[filtered_indices, :]
 
-        genes_log10_gmean = np.log10(
-            row_gmean(matrix_filtered, gmean_eps=1),
-        )
+        genes_log10_gmean = np.log10(row_gmean(matrix_filtered, gmean_eps=1))
 
-        # Use R's raw parameters
         common_genes = [g for g in r_batch_reference.index if g in genes_filtered]
         assert len(common_genes) > 0, \
             "No common genes between R raw params and filtered data"
@@ -87,19 +82,14 @@ class TestStep2Batch:
         )
         genes_log10_gmean_step1 = genes_log10_gmean[genes_step1_indices]
 
-        # Prepare model parameters from R's raw output
         model_parameters = r_batch_reference.loc[genes_step1].copy()
         col_map = build_batch_column_map(model_parameters.columns)
         model_parameters = model_parameters.rename(columns=col_map)
-
         model_parameters['od_factor'] = np.log10(
-            1 + np.power(
-                10,
-                genes_log10_gmean_step1
-            ) / model_parameters['theta'].values,
+            1 + np.power(10, genes_log10_gmean_step1)
+            / model_parameters['theta'].values,
         )
 
-        # Remove outliers
         outliers_df = pd.DataFrame(index=genes_step1)
         for col in model_parameters.columns:
             outliers_df[col] = is_outlier(
@@ -128,7 +118,6 @@ class TestStep2Batch:
 
         test_genes = list(r_fit.index[:50])
 
-        # Theta correlation is the meaningful metric for regularization
         _, theta_corr, tested = compare_gene_parameter(
             py_fit, r_fit, test_genes, param="theta", rtol=0.1,
         )
@@ -136,7 +125,6 @@ class TestStep2Batch:
         assert tested > 0, "No genes could be compared"
         assert theta_corr > 0.90, f"Theta correlation too low: {theta_corr:.4f}"
 
-        # Also check intercept-like coefficients correlate
         common = [g for g in test_genes if g in py_fit.index and g in r_fit.index]
         if len(common) > 10:
             r_thetas = np.array([float(r_fit.loc[g, 'theta']) for g in common])
