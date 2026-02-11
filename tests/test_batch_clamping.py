@@ -5,7 +5,7 @@ from scipy import sparse
 from pysctransform.pysctransform import get_regularized_params, row_gmean
 
 
-class TestBatchCamping:
+class TestBatchClamping:
     def _make_batch_inputs(
         self,
         n_step1_genes=30,
