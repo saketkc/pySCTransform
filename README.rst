@@ -86,7 +86,7 @@ Quickstart
 Development
 ===========
 
-Code style chec:
+Code style check:
 
 .. code-block:: bash
 flake8
