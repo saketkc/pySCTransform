@@ -359,8 +359,9 @@ def get_regularized_params(
         batches = cell_attr[batch_var].unique()
         for b in batches:
             batch_cells_step1 = cell_attr.index[cell_attr[batch_var] == b]
+            batch_cells_set = set(batch_cells_step1)
             batch_cell_idx = npy.array([
-                i for i, c in enumerate(cell_attr.index) if c in set(batch_cells_step1)
+                i for i, c in enumerate(cell_attr.index) if c in batch_cells_set
             ])
 
             # Step1 genes, batch-specific means
