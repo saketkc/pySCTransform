@@ -49,6 +49,28 @@ class TestRobustScaleBinned:
         )
         assert not np.isnan(result).any()
 
+    def test_nan_x_values_remain_nan(self):
+        y = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+        x = np.array([0.2, np.nan, 0.8, np.nan, 0.5])
+        breaks = [0, 0.5, 1.0]
+
+        result = robust_scale_binned(y, x, breaks)
+
+        expected_nan = np.array([False, True, False, True, False])
+        np.testing.assert_array_equal(np.isnan(result), expected_nan)
+        np.testing.assert_array_equal(np.isfinite(result), ~expected_nan)
+
+    def test_empty_bins_do_not_raise(self):
+        # All x values in [0.1, 0.4], so bins covering (0.5, 1.0] are empty
+        y = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+        x = np.array([0.1, 0.2, 0.3, 0.35, 0.4])
+        breaks = [0, 0.25, 0.5, 0.75, 1.0]
+
+        result = robust_scale_binned(y, x, breaks)
+
+        assert len(result) == len(y)
+        assert np.all(np.isfinite(result))
+
     @pytest.mark.benchmark
     def test_robust_scale_binned_performance(self, sample_data, benchmark):
         result = benchmark(
