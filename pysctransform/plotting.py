@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from adjustText import adjust_text
-from scipy.stats.stats import pearsonr
+from scipy.stats import pearsonr
 
 
 def is_outlier(x, snr_threshold=25):
