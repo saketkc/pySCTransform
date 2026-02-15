@@ -237,12 +237,12 @@ def get_model_params_allgene_glmgp(umi, coldata, threads=4, use_offset=False):
     if use_offset:
         results = Parallel(n_jobs=threads, backend="multiprocessing", batch_size=500)(
             delayed(get_model_params_pergene_glmgp_offset)(umi[i, :], coldata, log_umi)
-            for i in range(n_genes)
+            for i in range(n_genes),
         )
     else:
         results = Parallel(n_jobs=threads, backend="multiprocessing", batch_size=500)(
             delayed(get_model_params_pergene_glmgp)(umi[i, :], coldata)
-            for i in range(n_genes)
+            for i in range(n_genes),
         )
     params_df = pd.DataFrame(results)
 
@@ -900,8 +900,10 @@ def vst(
     else:
         model_parameters = model_parameters[non_outliers]
         if exclude_poisson:
-            non_poisson_genes = set(model_parameters.index.tolist()).difference(
-                poisson_genes,
+            non_poisson_genes = sorted(
+                set(model_parameters.index.tolist()).difference(
+                    poisson_genes,
+                ),
             )
             model_parameters = model_parameters.loc[non_poisson_genes]
         model_parameters_fit = get_regularized_params(

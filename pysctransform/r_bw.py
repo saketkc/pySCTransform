@@ -59,12 +59,13 @@ def robust_scale_binned_r(y, x, breaks):
     rpy2.robjects.numpy2ri.activate()
     base = importr("base")
     bins = base.cut(x=x, breaks=breaks, ordered_result=True)
-    df = pd.DataFrame({"x": y, "bins": bins})
-    tmp = df.groupby(["bins"]).apply(robust_scale)
-    order = df["bins"].argsort()
-    tmp = tmp.loc[order]  # sort_values(by=["bins"])
-    score = np.asarray(tmp["x"].values)
-    return score
+    bins = np.asarray(bins)
+    result = np.full(len(y), np.nan)
+    for b in np.unique(bins):
+        mask = bins == b
+        if mask.sum() > 0:
+            result[mask] = robust_scale(y[mask])
+    return result
 
 
 def is_outlier_r(y, x, th=10):
