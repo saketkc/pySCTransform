@@ -101,7 +101,11 @@ pytest -m "not benchmark"
 # Benchmarks only
 pytest -m benchmark --benchmark-only
 
-# Everything
+# Test everything
+pytest
+
+# Test pandas 2.x
+pip install "pandas>=2.0,<3.0"
 pytest
 
 Regenerate the R outputs to test again:

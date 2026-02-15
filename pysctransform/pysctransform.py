@@ -360,14 +360,16 @@ def get_regularized_params(
         for b in batches:
             batch_cells_step1 = cell_attr.index[cell_attr[batch_var] == b]
             batch_cells_set = set(batch_cells_step1)
-            batch_cell_idx = npy.array([
-                i for i, c in enumerate(cell_attr.index) if c in batch_cells_set
-            ])
+            batch_cell_idx = npy.array(
+                [
+                    i for i, c in enumerate(cell_attr.index) if c in batch_cells_set
+                ],
+            )
 
             # Step1 genes, batch-specific means
             umi_step1_genes = umi[npy.isin(genes, genes_step1), :]
             batch_gm_step1 = npy.log10(
-                row_gmean(umi_step1_genes[:, batch_cell_idx], gmean_eps=gmean_eps)
+                row_gmean(umi_step1_genes[:, batch_cell_idx], gmean_eps=gmean_eps),
             )
             finite_mask = npy.isfinite(batch_gm_step1)
             if not finite_mask.all() and finite_mask.any():
@@ -376,7 +378,7 @@ def get_regularized_params(
 
             # All genes, batch-specific means
             batch_gm_all = npy.log10(
-                row_gmean(umi[:, batch_cell_idx], gmean_eps=gmean_eps)
+                row_gmean(umi[:, batch_cell_idx], gmean_eps=gmean_eps),
             )
             # Replace -inf with min finite value
             finite_mask_all = npy.isfinite(batch_gm_all)
@@ -840,9 +842,8 @@ def vst(
             gene_attr["gene_amean"] >= gene_attr["gene_variance"]
             ].index.tolist()
         poisson_genes2 = gene_attr.loc[gene_attr["gene_amean"] <= 1e-3].index.tolist()
-        poisson_genes = set(poisson_genes1).union(poisson_genes2)
-
-        poisson_genes_step1 = set(poisson_genes).intersection(genes_step1)
+        poisson_genes = sorted(set(poisson_genes1).union(poisson_genes2))
+        poisson_genes_step1 = sorted(set(poisson_genes).intersection(genes_step1))
 
         if verbosity:
             print("Found ", len(poisson_genes1), " genes with var <= mean")
