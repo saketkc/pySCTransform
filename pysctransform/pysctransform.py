@@ -323,7 +323,7 @@ def get_regularized_params(
         cell_attr,
         umi,
         batch_var=None,
-        bw_adjust=3,
+        bw_adjust=7,
         gmean_eps=1,
         theta_regularization="od_factor",
         exclude_poisson=False,
@@ -653,9 +653,9 @@ def vst(
                 List of gene names for umi matrix
     cell_names: list
                 List of cell names for umi matrix
-    n_cells: int
+    n_cells: int or None
              Number of cells to use for estimating parameters in Step1: default is 5000
-    n_genes: int
+    n_genes: int or None
              Number of genes to use for estimating parameters in Step1; default is 2000
     threads: int
              Number of threads to use (caveat: higher threads require higher memory)
@@ -863,8 +863,22 @@ def vst(
 
     genes_log10_gmean_step1_to_return = genes_log10_gmean_step1.copy()
     genes_log10_amean_step1_to_return = genes_log10_amean_step1.copy()
+
+    if theta_regularization == "theta":
+        model_parameters["od_factor"] = npy.log10(model_parameters["theta"])
+    else:
+        model_parameters["od_factor"] = npy.log10(
+            1 + npy.power(10, genes_log10_gmean_step1) / model_parameters["theta"],
+        )
+
+    # Add after od_factor computation, before outlier detection
+    inf_theta_mask = ~npy.isfinite(model_parameters["theta"].values)
+
+    # Now detect outliers across ALL columns including od_factor, skipping raw theta
     outliers_df = pd.DataFrame(index=genes_step1)
     for col in model_parameters.columns:
+        if col == "theta":
+            continue
         if method == "glmgp":
             col_outliers = is_outlier_r(
                 model_parameters[col].values, genes_log10_gmean_step1,
@@ -876,13 +890,7 @@ def vst(
         outliers_df[col] = col_outliers
 
     if exclude_poisson:
-        outliers_df.loc[poisson_genes_step1, "theta"] = True
-    if theta_regularization == "theta":
-        model_parameters["od_factor"] = npy.log10(model_parameters["theta"])
-    else:
-        model_parameters["od_factor"] = npy.log10(
-            1 + npy.power(10, genes_log10_gmean_step1) / model_parameters["theta"],
-        )
+        outliers_df.loc[poisson_genes_step1, "od_factor"] = True
 
     model_parameters_to_return = model_parameters.copy()
     non_outliers = (outliers_df.sum(axis=1) == 0).values

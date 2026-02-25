@@ -125,7 +125,8 @@ def theta_ml(y, mu, limit=10, eps=1e-4):
     Returns
     -------
     theta : float
-        Estimated theta (inverse overdispersion parameter)
+        Estimated theta (inverse overdispersion parameter) - returns inf for theta
+        below fp epsilon.
     """
     y = _process_y(y)
     mu = npy.squeeze(mu)
@@ -163,6 +164,9 @@ def theta_ml(y, mu, limit=10, eps=1e-4):
         t0 = t0 + del_
 
     if t0 < 0:
+        return npy.inf
+
+    if t0 < npy.finfo(float).eps:
         return npy.inf
 
     return t0

@@ -138,3 +138,52 @@ class TestStep2Batch:
                 assert mean_rel_diff < 0.5, (
                     f"Theta mean relative difference too large: {mean_rel_diff:.4f}"
                 )
+
+    def test_regularization_improves_theta_correlation(
+            self, pbmc3k_batch_model, r_batch_reference, r_batch_fit_reference
+    ):
+        """
+        Regularization should bring theta closer to R's regularized reference,
+        not further away. Raw Step 1 correlates at ~0.97 with R's raw params.
+        After regularization, Python fit should correlate well with R's fit.
+        If the bug is present (wrong exog in kernel smoother), correlation drops.
+        """
+        matrix, genes, cells, cell_attr, design_matrix, formula = pbmc3k_batch_model
+
+        vst_out = vst(
+            matrix,
+            gene_names=genes,
+            cell_names=cells,
+            cell_attr_extra=cell_attr[["batch"]],
+            batch_var="batch",
+            n_genes=None,
+            n_cells=None,
+            method="theta_ml",
+            min_cells=10,
+            verbosity=False,
+        )
+
+        py_raw = vst_out["model_parameters"]
+        py_fit = vst_out["model_parameters_fit"]
+        r_fit = r_batch_fit_reference
+
+        common_raw = [g for g in r_batch_reference.index if g in py_raw.index]
+        py_theta_raw = py_raw.loc[common_raw, "theta"].values.astype(float)
+        r_theta_raw = r_batch_reference.loc[common_raw, "theta"].values.astype(float)
+        finite_raw = np.isfinite(py_theta_raw) & np.isfinite(r_theta_raw)
+        corr_raw = np.corrcoef(py_theta_raw[finite_raw], r_theta_raw[finite_raw])[0, 1]
+
+        common_fit = [g for g in r_fit.index if g in py_fit.index]
+        py_theta_fit = py_fit.loc[common_fit, "theta"].values.astype(float)
+        r_theta_fit = r_fit.loc[common_fit, "theta"].values.astype(float)
+        finite_fit = np.isfinite(py_theta_fit) & np.isfinite(r_theta_fit)
+        corr_fit = np.corrcoef(py_theta_fit[finite_fit], r_theta_fit[finite_fit])[0, 1]
+
+        print(f"\nStep 1 raw theta corr vs R raw: {corr_raw:.4f}")
+        print(f"Step 2 fit theta corr vs R fit: {corr_fit:.4f}")
+
+        # Step 1 should be high — if not, a different bug exists
+        assert corr_raw > 0.90, f"Step 1 raw theta corr too low: {corr_raw:.4f}"
+
+        # Regularization should not destroy the correlation
+        assert corr_fit > 0.90, f"Step 2 fit theta corr too low: {corr_fit:.4f}"
