@@ -412,18 +412,16 @@ def get_regularized_params(
             model_parameters_fit.loc[index, column] = params["smoothed"]
         else:
             bw = bw_silverman(exog_fit, bw_adjust=bw_adjust)
-
             if batch_col is not None:
-                valid = npy.isfinite(endog) & npy.isfinite(exog_fit)
+                batch_exog = batch_gmeans_step1[batch_col]
+                valid = npy.isfinite(endog) & npy.isfinite(batch_exog)
+                endog_fit_data = endog[valid]
+                exog_fit_data = batch_exog[valid]  # ← was always global
+                bw = bw_silverman(exog_fit_data, bw_adjust=bw_adjust)
             else:
                 valid = npy.isfinite(endog)
-
-            if valid.sum() < len(endog):
                 endog_fit_data = endog[valid]
                 exog_fit_data = exog_fit[valid]
-            else:
-                endog_fit_data = endog
-                exog_fit_data = exog_fit
 
             reg = KernelReg(
                 endog=endog_fit_data, exog=exog_fit_data,

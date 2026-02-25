@@ -1,5 +1,6 @@
 import pytest
 import pandas as pandas
+import pathlib as pathlib
 import numpy as numpy
 from patsy import dmatrix
 from pysctransform.pysctransform import (
@@ -24,7 +25,7 @@ def pbmc3k_data(tmp_path_factory):
 # conftest.py
 @pytest.fixture(scope="session")
 def batch_cell_attr():
-    return pandas.read_csv("./data/r_batch_cell_attr.csv", index_col=0)
+    return pandas.read_csv(pathlib.Path(__file__).parent / "../data/r_batch_cell_attr.csv", index_col=0)
 
 
 @pytest.fixture(scope="session")
@@ -39,33 +40,33 @@ def pbmc3k_batch_model(pbmc3k_data, batch_cell_attr):
 
 @pytest.fixture(scope="session")
 def r_reference_data():
-    return load_r_reference("./data/r_model_pars.csv")
+    return load_r_reference(pathlib.Path(__file__).parent / "../data/r_model_pars.csv")
 
 
 @pytest.fixture(scope="session")
 def r_raw_params():
-    return load_r_reference("./data/r_model_pars.csv")
+    return load_r_reference(pathlib.Path(__file__).parent / "../data/r_model_pars.csv")
 
 
 @pytest.fixture(scope="session")
 def r_fitted_params():
-    return load_r_reference("./data/r_model_pars_fit.csv")
+    return load_r_reference(pathlib.Path(__file__).parent / "../data/r_model_pars_fit.csv")
 
 
 @pytest.fixture(scope="session")
 def r_residuals():
     """Load R's Pearson residuals (expected output of step 3)."""
-    return load_r_reference("./data/r_residuals.csv")
+    return load_r_reference(pathlib.Path(__file__).parent / "../data/r_residuals.csv")
 
 
 @pytest.fixture(scope="session")
 def r_batch_reference():
-    return load_r_reference("./data/r_batch_model_pars.csv")
+    return load_r_reference(pathlib.Path(__file__).parent / "../data/r_batch_model_pars.csv")
 
 
 @pytest.fixture(scope="session")
 def r_batch_fit_reference():
-    return load_r_reference("./data/r_batch_model_pars_fit.csv")
+    return load_r_reference(pathlib.Path(__file__).parent / "../data/r_batch_model_pars_fit.csv")
 
 
 @pytest.fixture(scope="session")
