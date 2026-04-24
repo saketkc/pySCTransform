@@ -4,3 +4,6 @@ __email__ = "saketkc@gmail.com"
 __version__ = "0.1.1.dev0"
 
 from .pysctransform import get_hvg_residuals, vst, SCTransform
+from . import plotting
+
+__all__ = ["get_hvg_residuals", "vst", "SCTransform", "plotting"]

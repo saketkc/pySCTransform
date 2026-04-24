@@ -10,11 +10,6 @@ with open("README.rst") as readme_file:
 with open("HISTORY.rst") as history_file:
     history = history_file.read()
 
-with open("requirements.txt") as req_file:
-    requirements = [req.strip() for req in req_file.readlines()]
-
-test_requirements = ["pytest"]
-
 setup(
     author="Saket Choudhary",
     author_email="saketkc@gmail.com",
@@ -25,24 +20,25 @@ setup(
         "License :: OSI Approved :: BSD License",
         "Natural Language :: English",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.6",
-        "Programming Language :: Python :: 3.7",
-        "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
         "Topic :: Scientific/Engineering :: Bio-Informatics",
     ],
-    description="Python package for interacting with SRAdb and downloading datasets from SRA",
-    entry_points={"console_scripts": ["pysctransform=pysctransform.cli:parse_args"]},
-    install_requires=requirements,
+    description="Python implementation of SCTransform for single-cell" +
+                "RNA-seq data normalization",
+    entry_points={
+        "console_scripts":
+            ["pysctransform=pysctransform.cli:parse_args"]
+    },
     license="BSD license",
     long_description=readme + "\n\n" + history,
     include_package_data=True,
     keywords="pysctransform",
     name="pysctransform",
     packages=["pysctransform"],
-    python_requires=">=3",
-    setup_requires=requirements,
+    python_requires=">=3.10",
     test_suite="tests",
-    tests_require=test_requirements,
     url="https://github.com/saketkc/pysctransform",
     version="0.1.1",
     zip_safe=False,

@@ -22,8 +22,21 @@ We recommend using `conda <https://docs.conda.io/en/latest/>`_ for installing py
 
 .. code-block:: bash
 
-    conda create -n pysct louvain scanpy pysctransform
+    conda create -n pysct python==3.12 -y
     conda activate pysct
+
+
+Then install the library:
+
+.. code-block:: bash
+
+    pip install -e .
+
+Or to install development dependencies:
+
+.. code-block:: bash
+
+    pip install -e ".[dev]"
 
 ==========
 Quickstart
@@ -68,6 +81,42 @@ Quickstart
     
 .. image:: https://raw.githubusercontent.com/saketkc/pySCTransform/develop/notebooks/output_images/pysct_glmgp_residvar.png
     :target: https://github.com/saketkc/pySCTransform/blob/develop/notebooks/demo.ipynb 
+
+===========
+Development
+===========
+
+Code style check:
+
+.. code-block:: bash
+flake8
+
+To run various tests:
+
+.. code-block:: bash
+
+# Unit tests only
+pytest -m "not benchmark"
+
+# Benchmarks only
+pytest -m benchmark --benchmark-only
+
+# Test everything
+pytest
+
+# Test pandas 2.x
+pip install "pandas>=2.0,<3.0"
+pytest
+
+Regenerate the R outputs to test again:
+
+.. code-block:: bash
+
+conda create -n pysct_test -c conda-forge -c bioconda r-sctransform=0.4.3 r-matrix=1.7_4 r-seurat-5.4.0 r-hdf5r=1.14.6 bioconductor-glmgampoi=1.18.0 -y
+conda activate pysct_test
+Rscript /scripts/generate_reference.R
+Rscript /scripts/generate_reference_batch.R
+Rscript /scripts/generate_integrated_reference.R
 
 =========
 CITATION

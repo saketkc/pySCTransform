@@ -1,6 +1,3 @@
-import numbers
-import sys
-
 import numpy as npy
 import statsmodels
 import statsmodels.api as sm
@@ -8,7 +5,6 @@ from scipy.optimize import minimize
 from scipy.special import digamma
 from scipy.special import gammaln
 from scipy.special import polygamma
-from statsmodels.api import GLM
 
 
 def trigamma(x):
@@ -36,7 +32,6 @@ def lookup_table(y):
 
 
 def theta_nb_score(y, mu, theta, fast=True):
-
     y_lookup = None
     N = len(y)
     if fast:
@@ -49,8 +44,8 @@ def theta_nb_score(y, mu, theta, fast=True):
         digamma_theta = digamma(theta) * N
         mu_term = (npy.log(theta) - npy.log(mu + theta) + 1) * N
         y_term = (
-            1 / (mu + theta) * (y_sum + N * theta)
-        )  #  #sum((y + theta) / (mu + theta))
+                1 / (mu + theta) * (y_sum + N * theta)
+        )  # #sum((y + theta) / (mu + theta))
 
         lld = digamma_sum - digamma_theta - y_term + mu_term
         return lld
@@ -73,7 +68,10 @@ def theta_nb_hessian(y, mu, theta, fast=True):
         y_lookup = lookup_table(y)
         # y_lookup = npy.asarray(lookup_table(y))
         y_sum = npy.dot(y_lookup[:, 0], y_lookup[:, 1])
-        trigamma_sum = npy.dot(trigamma(y_lookup[:, 0] + theta), y_lookup[:, 1])
+        trigamma_sum = npy.dot(
+            trigamma(y_lookup[:, 0] + theta),
+            y_lookup[:, 1],
+        )
         trigamma_theta = trigamma(theta) * N
         mu_term = (1 / theta - 2 / (mu + theta)) * N
         y_term = (y_sum + N * theta) / (mu + theta) ** 2
@@ -96,7 +94,7 @@ def estimate_mu_glm(y, model_matrix):
     model = sm.GLM(y, model_matrix, family=sm.families.Poisson())
     fit = model.fit()
     mu = fit.predict()
-    return {"coef": fit.params, "mu": mu[0]}
+    return {"coef": fit.params, "mu": mu}
 
 
 def estimate_mu_poisson(y, model_matrix):
@@ -105,32 +103,73 @@ def estimate_mu_poisson(y, model_matrix):
     model = statsmodels.discrete.discrete_model.Poisson(y, model_matrix)
     fit = model.fit(disp=False)
     mu = fit.predict()
-    return {"coef": fit.params, "mu": mu[0]}
+    return {"coef": fit.params, "mu": mu}
 
 
-def theta_ml(y, mu, max_iters=20, tol=1e-4):
+def theta_ml(y, mu, limit=10, eps=1e-4):
+    """
+    Maximum likelihood estimation of theta for negative binomial.
+    Matches R's MASS::theta.ml.
+
+    Parameters
+    ----------
+    y : array
+        Count data
+    mu : array
+        Predicted means from Poisson GLM
+    limit : int
+        Maximum number of iterations (default 9)
+    eps : float
+        Convergence threshold (default 1e-4)
+
+    Returns
+    -------
+    theta : float
+        Estimated theta (inverse overdispersion parameter) - returns inf for theta
+        below fp epsilon.
+    """
     y = _process_y(y)
     mu = npy.squeeze(mu)
+    n = len(y)
 
-    N = len(y)
-    theta = N / sum((y / mu - 1) ** 2)
-    for i in range(max_iters):
-        theta = abs(theta)
+    def score(th):
+        return npy.sum(
+            digamma(th + y) - digamma(th) + npy.log(th) + 1
+            - npy.log(th + mu) - (y + th) / (mu + th),
+        )
 
-        score_diff = theta_nb_score(y, mu, theta)
-        # if first diff is negative, there is no maximum
-        if score_diff < 0:
-            return npy.inf
-        delta_theta = score_diff / theta_nb_hessian(y, mu, theta)
-        theta = theta - delta_theta
+    def info(th):
+        return npy.sum(
+            -polygamma(1, th + y) + polygamma(1, th) - 1 / th
+            + 2 / (mu + th) - (y + th) / (mu + th) ** 2,
+        )
 
-        if npy.abs(delta_theta) <= tol:
-            return theta
+    # Initial estimate
+    t0 = n / npy.sum((y / mu - 1) ** 2)
 
-    if theta < 0:
-        theta = npy.inf
+    if not npy.isfinite(t0) or t0 <= 0:
+        return npy.inf
 
-    return theta
+    # Match R's implementation
+    del_ = 1.0
+
+    for _ in range(1, limit):
+        if abs(del_) <= eps:
+            break
+        t0 = abs(t0)
+        i0 = info(t0)
+        if i0 == 0:
+            break
+        del_ = score(t0) / i0
+        t0 = t0 + del_
+
+    if t0 < 0:
+        return npy.inf
+
+    if t0 < npy.finfo(float).eps:
+        return npy.inf
+
+    return t0
 
 
 def alpha_lbfgs(y, mu, maxoverdispersion=1e5):
@@ -141,17 +180,17 @@ def alpha_lbfgs(y, mu, maxoverdispersion=1e5):
 
     def nll(alpha):
         return (
-            -npy.sum(gammaln(1 / alpha + y))
-            + N * gammaln(1 / alpha)
-            - ysum * npy.log(mu / (1 / alpha + mu))
-            - N * 1 / alpha * npy.log(1 / alpha / (1 / alpha + mu))
+                -npy.sum(gammaln(1 / alpha + y))
+                + N * gammaln(1 / alpha)
+                - ysum * npy.log(mu / (1 / alpha + mu))
+                - N * 1 / alpha * npy.log(1 / alpha / (1 / alpha + mu))
         )
 
-    init_alpha = (npy.var(y) - mu) / (mu**2)
+    init_alpha = (npy.var(y) - mu) / (mu ** 2)
     if init_alpha <= 0:
         return npy.inf
     alpha = minimize(
-        nll, init_alpha, bounds=[(0, maxoverdispersion)], method="L-BFGS-B"
+        nll, init_alpha, bounds=[(0, maxoverdispersion)], method="L-BFGS-B",
     )
     return 1 / alpha.x[0]
 
@@ -164,16 +203,19 @@ def theta_lbfgs(y, mu, maxoverdispersion=1e5):
 
     def nll(theta):
         return (
-            -npy.sum(gammaln(theta + y))
-            + N * gammaln(theta)
-            - ysum * npy.log(mu / (theta + mu))
-            - N * theta * npy.log(theta / (theta + mu))
+                -npy.sum(gammaln(theta + y))
+                + N * gammaln(theta)
+                - ysum * npy.log(mu / (theta + mu))
+                - N * theta * npy.log(theta / (theta + mu))
         )
 
-    init_theta = (mu**2) / (npy.var(y) - mu)
+    init_theta = (mu ** 2) / (npy.var(y) - mu)
     if init_theta <= 0:
         return npy.inf
     theta = minimize(
-        nll, init_theta, bounds=[(1 / maxoverdispersion, None)], method="L-BFGS-B"
+        nll,
+        init_theta,
+        bounds=[(1 / maxoverdispersion, None)],
+        method="L-BFGS-B",
     )
     return theta.x[0]
